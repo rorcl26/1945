@@ -867,8 +867,8 @@ def test_100_stereoscopic_scenery_powerup_drop_aerial_midboss_and_bottom_spawnin
         assert stage_bg.scenic_surfs[0].get_height() == 10240, f"實景圖高度必須為 10240 (實為 {stage_bg.scenic_surfs[0].get_height()})"
 
     # 1.2 檢驗磁碟上 100 張背景圖之原生解析度均嚴格為 1024x10240
-    scenic_p1 = os.path.join(scenic_dir, "scenic_ms_001.jpg")
-    if os.path.exists(scenic_p1):
+    scenic_p1 = bg_mgr._get_asset_path("scenic_ms_001.jpg")
+    if scenic_p1 and os.path.exists(scenic_p1):
         raw_check = pygame.image.load(scenic_p1)
         assert raw_check.get_size() == (1024, 10240), f"背景圖原生尺寸必須為 1024x10240，實為 {raw_check.get_size()}"
 
