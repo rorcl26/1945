@@ -164,12 +164,12 @@ docker run --rm -it \
 本專案已將所有代碼、音效與 100 張 960x10240 Google Gemini Banana 實景長卷完整打包封存為獨立映像檔：
 
 - **映像檔標籤**：`sky-fury-1945:latest`
-- **獨立封存檔**：`sky-fury-1945-latest.tar.gz` (約 527MB)
+- **獨立封存檔**：`II-WarSpace-1945-latest.tar.gz`
 
 若要在其他全新機器上直接執行，只需拷貝該 `.tar.gz` 檔案並執行：
 ```bash
 # 載入映像檔
-docker load -i sky-fury-1945-latest.tar.gz
+docker load -i II-WarSpace-1945-latest.tar.gz
 
 # 載入後直接啟動遊戲
 ./run-image.sh

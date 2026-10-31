@@ -5,7 +5,7 @@ __pycache__/
 
 # Large Docker image archive (exceeds GitHub 100MB limit)
 # The image can be rebuilt with: docker build -t sky-fury-1945:latest .
-sky-fury-1945-latest.tar.gz
+II-WarSpace-1945-latest.tar.gz
 *.tar.gz
 *.tar
 
