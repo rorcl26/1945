@@ -1,5 +1,5 @@
 """
-1942: 天空狂怒 (Sky Fury 1942)
+1945: 天空狂怒 (Sky Fury 1945)
 主遊戲引擎與循環 (Main Game Loop & State Machine)
 支援 20 大關卡、4 款戰機選擇、5 次完整生命力、十分之一生命扣除判定、戰果升級、按鍵 Z 特殊技與 GPU/CPU 渲染
 """
@@ -694,7 +694,7 @@ class Game:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="1942: 天空狂怒 (Sky Fury 1942)")
+    parser = argparse.ArgumentParser(description="1945: 天空狂怒 (Sky Fury 1945)")
     parser.add_argument("--test", action="store_true", help="執行無介面自動測試模式")
     parser.add_argument("--frames", type=int, default=0, help="限制運行幀數 (用於健康檢查)")
     parser.add_argument("--stage", type=int, default=1, help="指定起始關卡 (1-20)")

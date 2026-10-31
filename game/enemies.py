@@ -1,5 +1,5 @@
 """
-1942: 天空狂怒 (Sky Fury 1942)
+1945: 天空狂怒 (Sky Fury 1945)
 多樣化敵機與編隊系統 (Enemies & Formation Spawner)
 包含零式偵察機、黃黑高速截擊機、雙發重型轟炸機、空中砲艇與海面驅逐艦
 """
@@ -128,7 +128,7 @@ class Enemy:
                 self.y += self.speed * dt * 60
                 self.x = self.init_x + 90 * math.sin(self.time * 2.5)
             elif self.pattern == "dive_loop":
-                # 經典 1942 俯衝大迴旋
+                # 經典 1945 俯衝大迴旋
                 self.y += self.speed * dt * 60
                 if self.y > 180 and self.time < 3.0:
                     self.x += 4.0 * math.sin(self.time * 3.5) * dt * 60

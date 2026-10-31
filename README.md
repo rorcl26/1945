@@ -1,4 +1,4 @@
-# 1942: 天空狂怒 (Sky Fury 1942)
+# 1945: 天空狂怒 (Sky Fury 1945)
 經典二戰街機風格直向捲軸空戰過關遊戲（Docker 容器化 / GPU 硬體加速與 CPU 軟體渲染雙支援）
 
 ---
@@ -142,7 +142,7 @@ docker run --rm -it \
   -v /dev/shm:/dev/shm \
   --ipc=host \
   --network=host \
-  sky-fury-1942:latest
+  sky-fury-1945:latest
 
 # 純 CPU 軟體渲染模式直接執行映像檔
 docker run --rm -it \
@@ -154,7 +154,7 @@ docker run --rm -it \
   -v /dev/shm:/dev/shm \
   --ipc=host \
   --network=host \
-  sky-fury-1942:latest
+  sky-fury-1945:latest
 ```
 
 ---
@@ -163,13 +163,13 @@ docker run --rm -it \
 
 本專案已將所有代碼、音效與 100 張 960x10240 Google Gemini Banana 實景長卷完整打包封存為獨立映像檔：
 
-- **映像檔標籤**：`sky-fury-1942:latest`
-- **獨立封存檔**：`sky-fury-1942-latest.tar.gz` (約 527MB)
+- **映像檔標籤**：`sky-fury-1945:latest`
+- **獨立封存檔**：`sky-fury-1945-latest.tar.gz` (約 527MB)
 
 若要在其他全新機器上直接執行，只需拷貝該 `.tar.gz` 檔案並執行：
 ```bash
 # 載入映像檔
-docker load -i sky-fury-1942-latest.tar.gz
+docker load -i sky-fury-1945-latest.tar.gz
 
 # 載入後直接啟動遊戲
 ./run-image.sh

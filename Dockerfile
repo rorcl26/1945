@@ -1,4 +1,4 @@
-# 1942: 天空狂怒 (Sky Fury 1942)
+# 1945: 天空狂怒 (Sky Fury 1945)
 # 支援 Ubuntu 26.04 與 24.04，相容 GPU (NVIDIA OpenGL 硬體加速) 與 無 GPU (Mesa CPU 軟體渲染)
 FROM nvidia/cuda:12.8.1-base-ubuntu24.04
 

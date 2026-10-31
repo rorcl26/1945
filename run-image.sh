@@ -1,11 +1,11 @@
 #!/bin/bash
 set -e
 
-# 1942: 天空狂怒 (Sky Fury 1942) - 純 Docker 映像檔直接啟動腳本
+# 1945: 天空狂怒 (Sky Fury 1945) - 純 Docker 映像檔直接啟動腳本
 # 100% 獨立運行，無需本地源代碼，開箱即玩！
 
-IMAGE_NAME="sky-fury-1942:latest"
-TAR_FILE="sky-fury-1942-latest.tar.gz"
+IMAGE_NAME="sky-fury-1945:latest"
+TAR_FILE="sky-fury-1945-latest.tar.gz"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 檢查映像檔是否存在，若無但有 tar.gz 則自動載入
