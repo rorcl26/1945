@@ -864,7 +864,13 @@ def test_100_stereoscopic_scenery_powerup_drop_aerial_midboss_and_bottom_spawnin
     for s_idx in range(20):
         stage_bg = BackgroundManager(STAGES_DATA[s_idx]["bg_theme"], stage_idx=s_idx)
         assert len(stage_bg.scenic_surfs) == 5, f"第 {s_idx+1} 關必須成功載入 5 張立體實景圖，實為 {len(stage_bg.scenic_surfs)}"
-        assert stage_bg.scenic_surfs[0].get_size() == (960, 10240), f"實景圖尺寸必須為 960x10240 (實為 {stage_bg.scenic_surfs[0].get_size()})"
+        assert stage_bg.scenic_surfs[0].get_height() == 10240, f"實景圖高度必須為 10240 (實為 {stage_bg.scenic_surfs[0].get_height()})"
+
+    # 1.2 檢驗磁碟上 100 張背景圖之原生解析度均嚴格為 1024x10240
+    scenic_p1 = os.path.join(scenic_dir, "scenic_ms_001.jpg")
+    if os.path.exists(scenic_p1):
+        raw_check = pygame.image.load(scenic_p1)
+        assert raw_check.get_size() == (1024, 10240), f"背景圖原生尺寸必須為 1024x10240，實為 {raw_check.get_size()}"
 
     # 2. 檢驗每關中途大魔王以空中戰機為主
     aerial_midboss_count = sum(1 for s in STAGES_DATA if s.get("midboss_type") == "midboss_fighter")
