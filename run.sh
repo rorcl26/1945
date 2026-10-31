@@ -84,10 +84,10 @@ if [ "$MODE" == "gpu" ] || ( [ "$MODE" == "auto" ] && [ "$HAS_GPU" = true ] ); t
     echo "=================================================="
     echo " 🎮 檢測到 NVIDIA GPU！以 GPU 硬體加速模式啟動遊戲"
     echo "=================================================="
-    docker compose run --rm --name sky-fury-game game-gpu "${EXTRA_ARGS[@]}"
+    docker compose run --rm --name ii-warspace-game game-gpu "${EXTRA_ARGS[@]}"
 else
     echo "=================================================="
     echo " 💻 以 CPU 軟體渲染模式 (Mesa llvmpipe) 啟動遊戲"
     echo "=================================================="
-    docker compose run --rm --name sky-fury-game game-cpu "${EXTRA_ARGS[@]}"
+    docker compose run --rm --name ii-warspace-game game-cpu "${EXTRA_ARGS[@]}"
 fi

@@ -142,7 +142,7 @@ docker run --rm -it \
   -v /dev/shm:/dev/shm \
   --ipc=host \
   --network=host \
-  sky-fury-1945:latest
+  ii-warspace-1945:latest
 
 # 純 CPU 軟體渲染模式直接執行映像檔
 docker run --rm -it \
@@ -154,7 +154,7 @@ docker run --rm -it \
   -v /dev/shm:/dev/shm \
   --ipc=host \
   --network=host \
-  sky-fury-1945:latest
+  ii-warspace-1945:latest
 ```
 
 ---
@@ -163,7 +163,7 @@ docker run --rm -it \
 
 本專案已將所有代碼、音效與 100 張 1024x10240 Google Gemini Banana 實景長卷完整打包封存為獨立映像檔：
 
-- **映像檔標籤**：`sky-fury-1945:latest`
+- **映像檔標籤**：`ii-warspace-1945:latest`
 - **獨立封存檔**：`II-WarSpace-1945-latest.tar.gz`
 
 若要在其他全新機器上直接執行，只需拷貝該 `.tar.gz` 檔案並執行：

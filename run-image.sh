@@ -4,7 +4,7 @@ set -e
 # 1945: 二戰空間（II War Space） - 純 Docker 映像檔直接啟動腳本
 # 100% 獨立運行，無需本地源代碼，開箱即玩！
 
-IMAGE_NAME="sky-fury-1945:latest"
+IMAGE_NAME="ii-warspace-1945:latest"
 TAR_FILE="II-WarSpace-1945-latest.tar.gz"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

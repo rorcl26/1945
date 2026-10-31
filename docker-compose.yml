@@ -4,8 +4,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: sky-fury-1945:latest
-    container_name: sky-fury-gpu
+    image: ii-warspace-1945:latest
+    container_name: ii-warspace-gpu
     environment:
       - DISPLAY=${DISPLAY:-:0}
       - XAUTHORITY=${XAUTHORITY}
@@ -34,8 +34,8 @@ services:
 
   # 2. 無 GPU / CPU 軟體渲染模式 (相容任意純 CPU 環境)
   game-cpu:
-    image: sky-fury-1945:latest
-    container_name: sky-fury-cpu
+    image: ii-warspace-1945:latest
+    container_name: ii-warspace-cpu
     environment:
       - DISPLAY=${DISPLAY:-:0}
       - XAUTHORITY=${XAUTHORITY}
@@ -57,5 +57,5 @@ services:
 
   # 3. 自動化測試驗證服務 (Headless 模式，純映像檔內部驗證)
   test:
-    image: sky-fury-1945:latest
+    image: ii-warspace-1945:latest
     entrypoint: ["python3", "/app/test_game.py"]
