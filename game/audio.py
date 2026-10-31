@@ -1,5 +1,5 @@
 """
-1945: 天空狂怒 (Sky Fury 1945)
+1945: 二戰空間（II War Space）
 程序化音效與復古街機音樂合成器 (Synthesized Arcade Audio Engine)
 使用 NumPy 產生純淨 8-bit/16-bit 復古音效與動態背景旋律，無需外部音檔，100% 穩定且相容 Docker/無音效卡環境
 支援背景音樂 (BGM) 循環播放、我軍射擊音效、雷射音效與所有敵軍 (戰機/戰車/軍艦/BOSS) 被擊斃音效

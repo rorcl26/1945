@@ -1,2 +1,2 @@
-"""1945: Sky Fury package"""
+"""1945: II War Space package"""
 __version__ = "1.0.0"

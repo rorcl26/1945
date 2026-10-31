@@ -1,5 +1,5 @@
 """
-1945: 天空狂怒 (Sky Fury 1945)
+1945: 二戰空間（II War Space）
 遊戲設定檔 - 支援 20 大關卡、4 款主戰機選擇、5 次完整生命力、十分之一傷害判定
 """
 
@@ -9,7 +9,7 @@ import pygame
 SCREEN_WIDTH = 960
 SCREEN_HEIGHT = 1024
 FPS = 60
-TITLE = "1945: 天空狂怒 (Sky Fury 1945) - 經典二戰空戰過關"
+TITLE = "1945: 二戰空間（II War Space） - 經典二戰空戰過關"
 
 # 螢幕上下獨立切割資訊列高度 (避免擋住控制空域)
 HUD_TOP_HEIGHT = 58

@@ -1,5 +1,5 @@
 """
-1945: 天空狂怒 (Sky Fury 1945)
+1945: 二戰空間（II War Space）
 使用者介面與戰機選擇系統 (HUD & Fighter Selection UI)
 支援開場戰機選擇、5 次完整生命顯示、10 分之一血量條、技能冷卻、BOSS 警告與過關結算
 """
@@ -349,7 +349,7 @@ class UIManager:
         surf.fill((12, 18, 30))
 
         # 頂部大標題
-        title = self.font_large.render("1945: 天空狂怒 (SKY FURY)", True, COLOR_GOLD)
+        title = self.font_large.render("1945: 二戰空間（II War Space）", True, COLOR_GOLD)
         t_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 70))
         surf.blit(title, t_rect)
 

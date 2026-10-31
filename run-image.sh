@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# 1945: 天空狂怒 (Sky Fury 1945) - 純 Docker 映像檔直接啟動腳本
+# 1945: 二戰空間（II War Space） - 純 Docker 映像檔直接啟動腳本
 # 100% 獨立運行，無需本地源代碼，開箱即玩！
 
 IMAGE_NAME="sky-fury-1945:latest"

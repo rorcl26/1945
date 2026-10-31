@@ -1,5 +1,5 @@
 """
-1945: 天空狂怒 (Sky Fury 1945)
+1945: 二戰空間（II War Space）
 彈幕與武器系統 (Weapons & Projectiles System)
 包含機砲、散彈、追蹤飛彈、高能雷射、敵方扇形彈幕以及戰利品寶物
 """

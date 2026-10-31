@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# 1945: 天空狂怒 (Sky Fury 1945) 一鍵智慧啟動與測試腳本
+# 1945: 二戰空間（II War Space） 一鍵智慧啟動與測試腳本
 # 自動偵測 GPU / CPU 環境、自動授權 X11 顯示
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

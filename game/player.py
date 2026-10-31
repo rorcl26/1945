@@ -1,5 +1,5 @@
 """
-1945: 天空狂怒 (Sky Fury 1945)
+1945: 二戰空間（II War Space）
 玩家戰機核心邏輯 (Player Fighter Class)
 實現 4 種戰機選擇、五次完整生命力、被擊中損失十分之一血量、戰果升級武器與護盾、按鍵 Z 翻轉閃避/護盾特殊技
 支援吃到寶物後變身為 2~3 個戰機組合體協同密集攻擊 (Formation Combo Wingmen)

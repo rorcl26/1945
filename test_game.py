@@ -1,5 +1,5 @@
 """
-1945: 天空狂怒 (Sky Fury 1945)
+1945: 二戰空間（II War Space）
 自動化測試與驗證程式 (Automated Verification Test Suite)
 檢驗項目：
 1. 4 款主戰機選擇與初始化
@@ -913,7 +913,7 @@ def test_100_stereoscopic_scenery_powerup_drop_aerial_midboss_and_bottom_spawnin
 
 if __name__ == "__main__":
     print("==================================================")
-    print(" 1945: 天空狂怒 (Sky Fury 1945) 自動化測試驗證套件 ")
+    print(" 1945: 二戰空間（II War Space） 自動化測試驗證套件 ")
     print("==================================================")
     try:
         test_fighter_selection()
