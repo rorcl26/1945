@@ -18,7 +18,7 @@ from game.weapons import Bullet, HomingMissile, HomingLaser
 from game.audio import SoundManager
 
 class Player:
-    def __init__(self, fighter_config):
+    def __init__(self, fighter_config, player_id=1, screen_width=SCREEN_WIDTH):
         self.config = fighter_config
         self.fighter_id = fighter_config["id"]
         self.name = fighter_config["name"]
@@ -26,6 +26,8 @@ class Player:
         self.base_fire_rate = fighter_config["fire_rate"]
         self.weapon_type = fighter_config["weapon_type"]
         self.has_laser = False  # 吃到 L 寶物後解鎖全自動追蹤雷射
+        self.player_id = player_id
+        self.screen_width = screen_width
 
         # 生命力與防禦核心規則 (嚴格滿足題目要求)
         self.lives = MAX_LIVES           # 每次遊戲具有五次完整的生命力 (5條命)
@@ -42,8 +44,13 @@ class Player:
         # 吃到寶物後升級為 2~3 個組合體共同前進並進行密集齊射
         self.formation_units = 1
 
-        # 座標與移動
-        self.x = SCREEN_WIDTH // 2
+        # 座標與移動 (2P 模式依 player_id 分置兩側)
+        if self.player_id == 1 and self.screen_width > 960:
+            self.x = self.screen_width // 3
+        elif self.player_id == 2:
+            self.x = self.screen_width * 2 // 3
+        else:
+            self.x = self.screen_width // 2
         self.y = SCREEN_HEIGHT - 120
         self.radius = 20
         self.rect = pygame.Rect(int(self.x - 24), int(self.y - 24), 48, 48)
@@ -112,7 +119,12 @@ class Player:
             if self.lives > 0:
                 # 重新獲得滿額血量與重生無敵
                 self.hp = MAX_HP
-                self.x = SCREEN_WIDTH // 2
+                if self.player_id == 1 and self.screen_width > 960:
+                    self.x = self.screen_width // 3
+                elif self.player_id == 2:
+                    self.x = self.screen_width * 2 // 3
+                else:
+                    self.x = self.screen_width // 2
                 self.y = SCREEN_HEIGHT - 120
                 self.invulnerable_timer = RESPAWN_INVULNERABLE_TIME
                 self.power_level = max(1, self.power_level - 1)  # 死亡輕微掉落一級火力
@@ -122,6 +134,29 @@ class Player:
                 self.game_over = True
             return True  # 發生了爆炸重創
         return "damaged"
+
+    def revive(self):
+        """
+        【核心規則】：當其中一人的五個生命都損失後，透過 Y 鍵可以補滿。
+        補滿五次完整生命力 (5條命) 與 100 HP，無敵防護回歸戰鬥！
+        """
+        self.lives = MAX_LIVES
+        self.hp = MAX_HP
+        self.alive = True
+        self.game_over = False
+        if self.player_id == 1 and self.screen_width > 960:
+            self.x = self.screen_width // 3
+        elif self.player_id == 2:
+            self.x = self.screen_width * 2 // 3
+        else:
+            self.x = self.screen_width // 2
+        self.y = SCREEN_HEIGHT - 120
+        self.invulnerable_timer = RESPAWN_INVULNERABLE_TIME * 1.5
+        self.power_level = max(1, self.power_level)
+        self.formation_units = 1
+        snd = SoundManager.get_instance()
+        snd.play("powerup")
+        return True
 
     def apply_powerup(self, p_type):
         """
@@ -154,8 +189,13 @@ class Player:
             self.formation_units = min(3, max(2, self.formation_units + 1))
             snd.play("laser_powerup")
 
-    def handle_input(self, keys, dt):
-        """使用上下左右按鍵控制戰機飛行 (同時相容 WASD)"""
+    def handle_input(self, keys, dt, is_2p=False):
+        """
+        戰機飛行控制：
+        【核心規則】：
+        - 第一人 (P1)：以上下左右為主要控制方式
+        - 第二人 (P2)：以 WXAD 作為上下左右控制鍵 (W=上, X/S=下, A=左, D=右)
+        """
         if not self.alive:
             return
 
@@ -168,15 +208,25 @@ class Player:
             except (KeyError, IndexError, TypeError):
                 return False
 
-        # 方向控制
-        if is_down(pygame.K_LEFT) or is_down(pygame.K_a):
-            dx -= 1
-        if is_down(pygame.K_RIGHT) or is_down(pygame.K_d):
-            dx += 1
-        if is_down(pygame.K_UP) or is_down(pygame.K_w):
-            dy -= 1
-        if is_down(pygame.K_DOWN) or is_down(pygame.K_s):
-            dy += 1
+        if self.player_id == 1:
+            if is_down(pygame.K_LEFT) or (not is_2p and is_down(pygame.K_a)):
+                dx -= 1
+            if is_down(pygame.K_RIGHT) or (not is_2p and is_down(pygame.K_d)):
+                dx += 1
+            if is_down(pygame.K_UP) or (not is_2p and is_down(pygame.K_w)):
+                dy -= 1
+            if is_down(pygame.K_DOWN) or (not is_2p and is_down(pygame.K_s)):
+                dy += 1
+        else:
+            # P2: WXAD (W=上, X/S=下, A=左, D=右)
+            if is_down(pygame.K_a):
+                dx -= 1
+            if is_down(pygame.K_d):
+                dx += 1
+            if is_down(pygame.K_w):
+                dy -= 1
+            if is_down(pygame.K_x) or is_down(pygame.K_s):
+                dy += 1
 
         # 更新機身傾斜狀態 (Bank State)
         if dx < 0:
@@ -197,16 +247,33 @@ class Player:
 
         # 邊界限制 (考慮組合體翼展與上下獨立 HUD 切割防遮擋空域)
         margin_x = 48 if self.formation_units >= 2 else 32
-        self.x = max(margin_x, min(SCREEN_WIDTH - margin_x, self.x))
+        self.x = max(margin_x, min(self.screen_width - margin_x, self.x))
         min_y = HUD_TOP_HEIGHT + 26
         max_y = SCREEN_HEIGHT - HUD_BOTTOM_HEIGHT - 26
         self.y = max(min_y, min(max_y, self.y))
         self.rect.center = (int(self.x), int(self.y))
 
+    def check_shoot(self, keys, is_2p=False):
+        """
+        【核心規則】：
+        - 第一人：以 M 鍵作為射擊控制 (單人模式相容空白鍵)
+        - 第二人：以 V 鍵作為射擊控制
+        """
+        def is_down(k):
+            try:
+                return bool(keys[k])
+            except (KeyError, IndexError, TypeError):
+                return False
+
+        if self.player_id == 1:
+            return is_down(pygame.K_m) or (not is_2p and is_down(pygame.K_SPACE))
+        else:
+            return is_down(pygame.K_v)
+
     def shoot(self, target_enemy=None):
         """
-        空白鍵發射武器子彈 (依戰果等級增加射擊戰力)
-        當擁有 2~3 個組合體時，僚機同時同步發射密集前向能量彈幕！
+        發射武器子彈 (依戰果等級增加射擊戰力)
+        【核心規則】：二人戰機射出的子彈顏色需不一樣，並將子彈尺寸大小縮小為二分之一
         """
         if not self.alive:
             return []
@@ -220,41 +287,42 @@ class Player:
         bullets = []
         lvl = self.power_level
         dmg = 20 + lvl * 5
+        pid = self.player_id
 
         snd = SoundManager.get_instance()
 
         # 1. 主戰機火力發射 (若吃到雷射戰果 L，則發射自動追蹤高能雷射)
         if self.has_laser:
             snd.play("laser_shoot")
-            bullets.append(HomingLaser(self.x - 12, self.y - 20, -2.5, -16, dmg + 12, target=target_enemy))
-            bullets.append(HomingLaser(self.x + 12, self.y - 20, 2.5, -16, dmg + 12, target=target_enemy))
+            bullets.append(HomingLaser(self.x - 12, self.y - 20, -2.5, -16, dmg + 12, target=target_enemy, player_id=pid))
+            bullets.append(HomingLaser(self.x + 12, self.y - 20, 2.5, -16, dmg + 12, target=target_enemy, player_id=pid))
             if lvl >= 2:
-                bullets.append(HomingLaser(self.x, self.y - 25, 0, -18, dmg + 15, target=target_enemy))
+                bullets.append(HomingLaser(self.x, self.y - 25, 0, -18, dmg + 15, target=target_enemy, player_id=pid))
             if lvl >= 4:
-                bullets.append(HomingLaser(self.x - 24, self.y - 12, -4.5, -15, dmg + 10, target=target_enemy))
-                bullets.append(HomingLaser(self.x + 24, self.y - 12, 4.5, -15, dmg + 10, target=target_enemy))
+                bullets.append(HomingLaser(self.x - 24, self.y - 12, -4.5, -15, dmg + 10, target=target_enemy, player_id=pid))
+                bullets.append(HomingLaser(self.x + 24, self.y - 12, 4.5, -15, dmg + 10, target=target_enemy, player_id=pid))
 
         elif self.weapon_type == "vulcan":
             snd.play("player_shoot")
             # P-38 閃電號：前向密集高速機砲
             if lvl == 1:
-                bullets.append(Bullet(self.x - 8, self.y - 18, 0, -14, "player_vulcan", dmg))
-                bullets.append(Bullet(self.x + 8, self.y - 18, 0, -14, "player_vulcan", dmg))
+                bullets.append(Bullet(self.x - 8, self.y - 18, 0, -14, "player_vulcan", dmg, player_id=pid))
+                bullets.append(Bullet(self.x + 8, self.y - 18, 0, -14, "player_vulcan", dmg, player_id=pid))
             elif lvl == 2:
-                bullets.append(Bullet(self.x - 12, self.y - 18, 0, -15, "player_vulcan", dmg))
-                bullets.append(Bullet(self.x, self.y - 24, 0, -16, "player_vulcan", dmg + 5))
-                bullets.append(Bullet(self.x + 12, self.y - 18, 0, -15, "player_vulcan", dmg))
+                bullets.append(Bullet(self.x - 12, self.y - 18, 0, -15, "player_vulcan", dmg, player_id=pid))
+                bullets.append(Bullet(self.x, self.y - 24, 0, -16, "player_vulcan", dmg + 5, player_id=pid))
+                bullets.append(Bullet(self.x + 12, self.y - 18, 0, -15, "player_vulcan", dmg, player_id=pid))
             elif lvl >= 3:
-                bullets.append(Bullet(self.x - 16, self.y - 16, -1.5, -15, "player_vulcan", dmg))
-                bullets.append(Bullet(self.x - 6, self.y - 22, 0, -16, "player_vulcan", dmg))
-                bullets.append(Bullet(self.x + 6, self.y - 22, 0, -16, "player_vulcan", dmg))
-                bullets.append(Bullet(self.x + 16, self.y - 16, 1.5, -15, "player_vulcan", dmg))
+                bullets.append(Bullet(self.x - 16, self.y - 16, -1.5, -15, "player_vulcan", dmg, player_id=pid))
+                bullets.append(Bullet(self.x - 6, self.y - 22, 0, -16, "player_vulcan", dmg, player_id=pid))
+                bullets.append(Bullet(self.x + 6, self.y - 22, 0, -16, "player_vulcan", dmg, player_id=pid))
+                bullets.append(Bullet(self.x + 16, self.y - 16, 1.5, -15, "player_vulcan", dmg, player_id=pid))
             if lvl >= 4:
-                bullets.append(Bullet(self.x - 24, self.y - 10, -3.5, -13, "player_vulcan", dmg - 5))
-                bullets.append(Bullet(self.x + 24, self.y - 10, 3.5, -13, "player_vulcan", dmg - 5))
+                bullets.append(Bullet(self.x - 24, self.y - 10, -3.5, -13, "player_vulcan", dmg - 5, player_id=pid))
+                bullets.append(Bullet(self.x + 24, self.y - 10, 3.5, -13, "player_vulcan", dmg - 5, player_id=pid))
             if lvl >= 5:
-                bullets.append(HomingMissile(self.x - 20, self.y, -3, -6, dmg + 10, target_enemy))
-                bullets.append(HomingMissile(self.x + 20, self.y, 3, -6, dmg + 10, target_enemy))
+                bullets.append(HomingMissile(self.x - 20, self.y, -3, -6, dmg + 10, target_enemy, player_id=pid))
+                bullets.append(HomingMissile(self.x + 20, self.y, 3, -6, dmg + 10, target_enemy, player_id=pid))
 
         elif self.weapon_type == "spread":
             snd.play("player_shoot")
@@ -266,33 +334,33 @@ class Player:
                 rad = math.radians(-90 + angle)
                 vx = math.cos(rad) * 13.0
                 vy = math.sin(rad) * 13.0
-                bullets.append(Bullet(self.x, self.y - 16, vx, vy, "player_spread", dmg))
+                bullets.append(Bullet(self.x, self.y - 16, vx, vy, "player_spread", dmg, player_id=pid))
 
         elif self.weapon_type == "missile":
             snd.play("player_shoot")
             # BF-109 獵鷹號：前向機砲加自動追蹤火箭
-            bullets.append(Bullet(self.x - 10, self.y - 18, 0, -14, "player_vulcan", dmg))
-            bullets.append(Bullet(self.x + 10, self.y - 18, 0, -14, "player_vulcan", dmg))
+            bullets.append(Bullet(self.x - 10, self.y - 18, 0, -14, "player_vulcan", dmg, player_id=pid))
+            bullets.append(Bullet(self.x + 10, self.y - 18, 0, -14, "player_vulcan", dmg, player_id=pid))
             if lvl >= 2:
-                bullets.append(HomingMissile(self.x - 18, self.y, -4, -4, dmg + 5, target_enemy))
-                bullets.append(HomingMissile(self.x + 18, self.y, 4, -4, dmg + 5, target_enemy))
+                bullets.append(HomingMissile(self.x - 18, self.y, -4, -4, dmg + 5, target_enemy, player_id=pid))
+                bullets.append(HomingMissile(self.x + 18, self.y, 4, -4, dmg + 5, target_enemy, player_id=pid))
             if lvl >= 4:
-                bullets.append(Bullet(self.x - 5, self.y - 24, 0, -16, "player_vulcan", dmg + 8))
-                bullets.append(Bullet(self.x + 5, self.y - 24, 0, -16, "player_vulcan", dmg + 8))
+                bullets.append(Bullet(self.x - 5, self.y - 24, 0, -16, "player_vulcan", dmg + 8, player_id=pid))
+                bullets.append(Bullet(self.x + 5, self.y - 24, 0, -16, "player_vulcan", dmg + 8, player_id=pid))
 
         else:
             snd.play("laser_shoot")
             # 零式改 幻影號：高能自動追蹤雷射
-            bullets.append(HomingLaser(self.x - 10, self.y - 22, -2, -18, dmg + 12, target=target_enemy))
-            bullets.append(HomingLaser(self.x + 10, self.y - 22, 2, -18, dmg + 12, target=target_enemy))
+            bullets.append(HomingLaser(self.x - 10, self.y - 22, -2, -18, dmg + 12, target=target_enemy, player_id=pid))
+            bullets.append(HomingLaser(self.x + 10, self.y - 22, 2, -18, dmg + 12, target=target_enemy, player_id=pid))
             if lvl >= 2:
-                bullets.append(HomingLaser(self.x, self.y - 28, 0, -20, dmg + 16, target=target_enemy))
+                bullets.append(HomingLaser(self.x, self.y - 28, 0, -20, dmg + 16, target=target_enemy, player_id=pid))
             if lvl >= 3:
-                bullets.append(Bullet(self.x - 22, self.y - 14, -2.5, -16, "player_vulcan", dmg))
-                bullets.append(Bullet(self.x + 22, self.y - 14, 2.5, -16, "player_vulcan", dmg))
+                bullets.append(Bullet(self.x - 22, self.y - 14, -2.5, -16, "player_vulcan", dmg, player_id=pid))
+                bullets.append(Bullet(self.x + 22, self.y - 14, 2.5, -16, "player_vulcan", dmg, player_id=pid))
             if lvl >= 5:
-                bullets.append(HomingLaser(self.x - 30, self.y - 10, -5.0, -15, dmg + 10, target=target_enemy))
-                bullets.append(HomingLaser(self.x + 30, self.y - 10, 5.0, -15, dmg + 10, target=target_enemy))
+                bullets.append(HomingLaser(self.x - 30, self.y - 10, -5.0, -15, dmg + 10, target=target_enemy, player_id=pid))
+                bullets.append(HomingLaser(self.x + 30, self.y - 10, 5.0, -15, dmg + 10, target=target_enemy, player_id=pid))
 
         # 2. 組合體 (2~3 機) 僚機同步進行密集火力攻擊！
         wingman_dmg = 15 + lvl * 3
@@ -301,20 +369,20 @@ class Player:
             rx = self.x + 38
             ry = self.y + 12
             if self.has_laser:
-                bullets.append(HomingLaser(rx, ry - 14, 1.5, -16, wingman_dmg + 5, target=target_enemy))
+                bullets.append(HomingLaser(rx, ry - 14, 1.5, -16, wingman_dmg + 5, target=target_enemy, player_id=pid))
             else:
-                bullets.append(Bullet(rx - 5, ry - 12, 0, -15, "player_wingman_bullet", wingman_dmg))
-                bullets.append(Bullet(rx + 5, ry - 12, 0, -15, "player_wingman_bullet", wingman_dmg))
+                bullets.append(Bullet(rx - 5, ry - 12, 0, -15, "player_wingman_bullet", wingman_dmg, player_id=pid))
+                bullets.append(Bullet(rx + 5, ry - 12, 0, -15, "player_wingman_bullet", wingman_dmg, player_id=pid))
 
         if self.formation_units >= 3:
             # 左翼伴隨機開火
             lx = self.x - 38
             ly = self.y + 12
             if self.has_laser:
-                bullets.append(HomingLaser(lx, ly - 14, -1.5, -16, wingman_dmg + 5, target=target_enemy))
+                bullets.append(HomingLaser(lx, ly - 14, -1.5, -16, wingman_dmg + 5, target=target_enemy, player_id=pid))
             else:
-                bullets.append(Bullet(lx - 5, ly - 12, 0, -15, "player_wingman_bullet", wingman_dmg))
-                bullets.append(Bullet(lx + 5, ly - 12, 0, -15, "player_wingman_bullet", wingman_dmg))
+                bullets.append(Bullet(lx - 5, ly - 12, 0, -15, "player_wingman_bullet", wingman_dmg, player_id=pid))
+                bullets.append(Bullet(lx + 5, ly - 12, 0, -15, "player_wingman_bullet", wingman_dmg, player_id=pid))
 
         return bullets
 

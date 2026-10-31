@@ -917,6 +917,202 @@ def test_100_stereoscopic_scenery_powerup_drop_aerial_midboss_and_bottom_spawnin
     print("  ✓ 驗證敵方戰機可由下方出現並向上突擊！")
     print("  -> 通過！")
 
+def test_two_player_coop_mode_and_rules():
+    print("\n▶ [測試 27/27] 檢驗雙人協同作戰模式 (1P 960*10240 vs 2P 1024*10240、戰機4選1不重複、上下左右+M/WXAD+V控制、子彈雙色減半、四向突入數量加倍、雙大魔王、Y鍵補滿5命)...")
+    from game.sprites import create_bullet_sprite
+
+    # 1. 檢驗 1P 模式 (960*10240) 與 2P 模式 (1024*10240) 背景與解析度
+    g1 = Game(headless=True, num_players=1)
+    g1.load_stage(0)
+    assert g1.screen_width == 960, f"1P 模式螢幕寬度應為 960，實為 {g1.screen_width}"
+    assert g1.bg_mgr.screen_width == 960, f"1P 模式背景寬度應為 960，實為 {g1.bg_mgr.screen_width}"
+    assert g1.bg_mgr.scenic_surf.get_width() == 960, f"1P 模式背景圖寬度應為 960，實為 {g1.bg_mgr.scenic_surf.get_width()}"
+    assert g1.bg_mgr.scenic_surf.get_height() == 10240, f"1P 模式背景圖高度應為 10240，實為 {g1.bg_mgr.scenic_surf.get_height()}"
+
+    g2 = Game(headless=True, num_players=2)
+    g2.load_stage(0)
+    assert g2.screen_width == 1024, f"2P 模式螢幕寬度應為 1024，實為 {g2.screen_width}"
+    assert g2.bg_mgr.screen_width == 1024, f"2P 模式背景寬度應為 1024，實為 {g2.bg_mgr.screen_width}"
+    assert g2.bg_mgr.scenic_surf.get_width() == 1024, f"2P 模式背景圖寬度應為 1024 (原生無縮放)，實為 {g2.bg_mgr.scenic_surf.get_width()}"
+    assert g2.bg_mgr.scenic_surf.get_height() == 10240, f"2P 模式背景圖高度應為 10240，實為 {g2.bg_mgr.scenic_surf.get_height()}"
+
+    # 2. 檢驗 2 人同時執行時由第一人先選 4 種之一，第二人只能選剩下三種之一 (鎖定第一人選擇)
+    g_sel = Game(headless=True, num_players=2)
+    g_sel.state = "plane_select_2p"
+    g_sel.selecting_player = 1
+    g_sel.p1_plane_idx = 0  # P1 選 P-38
+    # P1 按 M 鍵確認
+    g_sel.run_frame(simulated_keys=FakeKeyDict({}))
+    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_m))
+    g_sel.run_frame(simulated_keys=FakeKeyDict({}))
+    assert g_sel.selecting_player == 2, "P1 確認後應切換為第 2 人選擇"
+    assert g_sel.p2_plane_idx != g_sel.p1_plane_idx, "P2 初始指針不能與 P1 重複"
+
+    # P2 切換時自動跳過 P1 機種
+    for step_key in [pygame.K_w, pygame.K_x]:
+        pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=step_key))
+        g_sel.run_frame(simulated_keys=FakeKeyDict({}))
+        assert g_sel.p2_plane_idx != g_sel.p1_plane_idx, "P2 輪詢選擇時不可選中 P1 已選之戰機"
+
+    # P2 選擇機種 2 (BF-109) 並按 V 鍵確認
+    g_sel.p2_plane_idx = 2
+    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_v))
+    g_sel.run_frame(simulated_keys=FakeKeyDict({}))
+    assert g_sel.state == "playing", "P2 按 V 確認後應進入戰鬥狀態"
+    assert g_sel.player.fighter_id == FIGHTER_TYPES[0]["id"]
+    assert g_sel.player2.fighter_id == FIGHTER_TYPES[2]["id"]
+
+    # 3. 檢驗控制鍵：P1 方向鍵 + M 鍵射擊；P2 WXAD + V 鍵射擊
+    p1 = g2.player
+    p2 = g2.player2
+    init_p1_x, init_p1_y = p1.x, p1.y
+    init_p2_x, init_p2_y = p2.x, p2.y
+
+    # 3.1 P1 向上與向左移動 (方向鍵)
+    p1.handle_input(FakeKeyDict({pygame.K_UP: True, pygame.K_LEFT: True}), 0.1, is_2p=True)
+    assert p1.y < init_p1_y, f"P1 按 UP 鍵 y 應減少，原 {init_p1_y} -> 現 {p1.y}"
+    assert p1.x < init_p1_x, f"P1 按 LEFT 鍵 x 應減少，原 {init_p1_x} -> 現 {p1.x}"
+
+    # 3.2 P1 向下與向右移動 (方向鍵)
+    p1.handle_input(FakeKeyDict({pygame.K_DOWN: True, pygame.K_RIGHT: True}), 0.2, is_2p=True)
+    assert p1.y > init_p1_y - 10
+    assert p1.x > init_p1_x - 10
+
+    # 3.3 P1 射擊鍵 (M 鍵，2P 模式下空白鍵無效)
+    assert p1.check_shoot(FakeKeyDict({pygame.K_m: True}), is_2p=True) == True, "P1 必須支援 M 鍵射擊"
+    assert p1.check_shoot(FakeKeyDict({pygame.K_SPACE: True}), is_2p=True) == False, "2P 模式下 P1 空白鍵射擊應被專用 M 鍵替代"
+
+    # 3.4 P2 向上與向左移動 (W, A)
+    p2.handle_input(FakeKeyDict({pygame.K_w: True, pygame.K_a: True}), 0.1, is_2p=True)
+    assert p2.y < init_p2_y, f"P2 按 W 鍵 y 應減少，原 {init_p2_y} -> 現 {p2.y}"
+    assert p2.x < init_p2_x, f"P2 按 A 鍵 x 應減少，原 {init_p2_x} -> 現 {p2.x}"
+
+    # 3.5 P2 向下與向右移動 (X, D)
+    p2.handle_input(FakeKeyDict({pygame.K_x: True, pygame.K_d: True}), 0.2, is_2p=True)
+    assert p2.y > init_p2_y - 10, f"P2 按 X 鍵 y 應增加"
+    assert p2.x > init_p2_x - 10, f"P2 按 D 鍵 x 應增加"
+
+    # 3.6 P2 射擊鍵 (V 鍵)
+    assert p2.check_shoot(FakeKeyDict({pygame.K_v: True}), is_2p=True) == True, "P2 必須支援 V 鍵射擊"
+    assert p2.check_shoot(FakeKeyDict({pygame.K_m: True}), is_2p=True) == False, "P2 不應受 M 鍵射擊觸發"
+
+    # 4. 檢驗二人戰機射出的子彈顏色不一樣，且尺寸大小縮小為原本的二分之一
+    b1_surf = create_bullet_sprite("player_vulcan", player_id=1)
+    b2_surf = create_bullet_sprite("player_vulcan", player_id=2)
+    # 原 12x24 縮小二分之一後嚴格為 6x12
+    assert b1_surf.get_size() == (6, 12), f"P1 機砲子彈尺寸必須縮小為二分之一 (6x12)，實為 {b1_surf.get_size()}"
+    assert b2_surf.get_size() == (6, 12), f"P2 機砲子彈尺寸必須縮小為二分之一 (6x12)，實為 {b2_surf.get_size()}"
+
+    # 檢驗顏色不同 (P1 金黃 vs P2 翡翠綠)
+    col1 = b1_surf.get_at((1, 5))
+    col2 = b2_surf.get_at((1, 5))
+    assert col1 != col2, f"P1 與 P2 子彈像素顏色必須截然不同！P1={col1}, P2={col2}"
+    assert col1[0] > 200 and col1[1] > 180 and col1[2] < 120, f"P1 子彈應為金黃色調，實為 {col1}"
+    assert col2[1] > 200 and col2[0] < 150, f"P2 子彈應為翠綠色調，實為 {col2}"
+
+    # 檢驗雷射子彈尺寸亦縮小二分之一 (6x18，原 12x36) 且色彩分明 (P1 碧藍 vs P2 洋紅)
+    l1_surf = create_bullet_sprite("player_laser", player_id=1)
+    l2_surf = create_bullet_sprite("player_laser", player_id=2)
+    assert l1_surf.get_size() == (6, 18), f"雷射尺寸必須縮小二分之一 (6x18)，實為 {l1_surf.get_size()}"
+    assert l2_surf.get_size() == (6, 18), f"雷射尺寸必須縮小二分之一 (6x18)，實為 {l2_surf.get_size()}"
+    assert l1_surf.get_at((1, 8)) != l2_surf.get_at((1, 8)), "P1 與 P2 雷射子彈顏色必須不同"
+
+    # 5. 檢驗敵方可由上下左右 (top, bottom, left, right) 出現，且 2人模式數量加倍
+    # 5.1 驗證 4 個方向敵機的飛行軌跡
+    top_enemy = Enemy(500, -40, enemy_type="scout_zero", pattern="straight", spawn_direction="top", screen_width=1024)
+    bottom_enemy = Enemy(500, 1060, enemy_type="scout_zero", pattern="climb_straight", spawn_direction="bottom", screen_width=1024)
+    left_enemy = Enemy(-40, 400, enemy_type="scout_zero", pattern="straight", spawn_direction="left", screen_width=1024)
+    right_enemy = Enemy(1060, 400, enemy_type="scout_zero", pattern="straight", spawn_direction="right", screen_width=1024)
+
+    assert top_enemy.spawn_direction == "top"
+    assert bottom_enemy.spawn_direction == "bottom"
+    assert left_enemy.spawn_direction == "left"
+    assert right_enemy.spawn_direction == "right"
+
+    top_enemy.update(0.1)
+    bottom_enemy.update(0.1)
+    left_enemy.update(0.1)
+    right_enemy.update(0.1)
+
+    assert top_enemy.y > -40, "上方敵機應向下飛入"
+    assert bottom_enemy.y < 1060, "下方敵機應向上突擊"
+    assert left_enemy.x > -40, "左方敵機應向右飛入"
+    assert right_enemy.x < 1060, "右方敵機應向左飛入"
+
+    # 5.2 驗證 2人模式敵機數量與保底加倍 (MIN_AIR_ENEMIES_ON_SCREEN 2人為8，1人為4)
+    g2.enemies.clear()
+    for _ in range(60):
+        g2.enemy_spawn_timer = 0.0
+        g2.spawn_enemies(0.016)
+    directions_found = set(getattr(e, "spawn_direction", "top") for e in g2.enemies)
+    assert len(directions_found) >= 3, f"生成之敵機必須涵蓋上下左右多向突入，目前出現方向: {directions_found}"
+    assert len(g2.enemies) >= 8, f"2人模式同屏敵機數量應加倍 (>= 8)，實為 {len(g2.enemies)}"
+
+    # 6. 檢驗最後的大魔王需有兩隻 (Boss 1 與 Boss 2)，且兩隻均擊破才過關
+    g2.stage_time = 9999.0  # 推進至大魔王時間
+    g2.bosses.clear()
+    g2.update(0.1)
+    assert len(g2.bosses) == 2, f"2人模式最後的大魔王必須有兩隻，實為 {len(g2.bosses)}"
+    b1, b2 = g2.bosses[0], g2.bosses[1]
+    assert b1.alive and b2.alive, "雙大魔王必須同時存活登場迎戰"
+    assert b1.boss_id == 1 and b2.boss_id == 2
+    assert b1.x != b2.x, f"雙大魔王應分列不同座標，實為 b1.x={b1.x}, b2.x={b2.x}"
+
+    # 擊破第一隻大魔王
+    b1.is_entering = False
+    b2.is_entering = False
+    g2.state = "playing"
+    b_dummy = Bullet(b1.x, b1.y, 0, -1, "player_vulcan", damage=b1.max_hp * 4, is_player=True)
+    g2.player_bullets = [b_dummy]
+    g2.handle_collisions()
+    assert b1.is_defeated and not b2.is_defeated, "第一隻大魔王應被擊破，第二隻依然存活迎戰"
+    assert g2.state == "playing", "只擊倒一隻大魔王時遊戲不可過關，必須將兩隻大魔王全部滅亡！"
+
+    # 擊破第二隻大魔王
+    b_dummy2 = Bullet(b2.x, b2.y, 0, -1, "player_vulcan", damage=b2.max_hp * 4, is_player=True)
+    g2.player_bullets = [b_dummy2]
+    g2.handle_collisions()
+    assert b1.is_defeated and b2.is_defeated, "雙大魔王必須均已被擊破"
+    assert g2.state == "stage_clear", "當雙大魔王均被消滅時，遊戲應正確結算過關 (STATE_STAGE_CLEAR)！"
+
+    # 7. 檢驗當其中一人的五個生命都損失後，透過 Y 鍵可以補滿 (5 命滿血 100 HP 復活)
+    # 7.1 P1 損失五個生命 (Lives = 0)
+    p1.invulnerable_timer = 0
+    p1.lives = 1
+    p1.hp = 10
+    p1.take_hit()
+    assert p1.lives == 0, f"P1 生命應歸零，實為 {p1.lives}"
+    assert p1.alive == False, "P1 應已陣亡"
+    assert p1.game_over == True
+
+    # P1 按 Y 鍵補滿
+    g2.run_frame(simulated_keys=FakeKeyDict({pygame.K_y: True}))
+    assert p1.lives == 5, f"透過 Y 鍵補滿後，P1 生命必須恢復為完整的 5 次生命力，實為 {p1.lives}"
+    assert p1.hp == 100, f"透過 Y 鍵補滿後，P1 血量必須恢復為滿額 100 HP，實為 {p1.hp}"
+    assert p1.alive == True, "P1 必須重新復活投入戰鬥"
+    assert p1.game_over == False
+
+    # 7.2 P2 損失五個生命並透過 Y 鍵補滿
+    p2.invulnerable_timer = 0
+    p2.lives = 1
+    p2.hp = 10
+    p2.take_hit()
+    assert p2.lives == 0
+    assert p2.alive == False
+    g2.run_frame(simulated_keys=FakeKeyDict({pygame.K_y: True}))
+    assert p2.lives == 5, f"透過 Y 鍵補滿後，P2 生命必須恢復為完整的 5 次生命力，實為 {p2.lives}"
+    assert p2.hp == 100, f"透過 Y 鍵補滿後，P2 血量必須恢復為滿額 100 HP，實為 {p2.hp}"
+    assert p2.alive == True, "P2 必須重新復活投入戰鬥"
+
+    print("  ✓ 驗證 1P (960*10240) 與 2P (1024*10240) 模式背景解析度運算精準無誤！")
+    print("  ✓ 驗證 2P 模式戰機 4 選 1 不重複選擇機制 (第 1 人先選，第 2 人只能選剩餘機種)！")
+    print("  ✓ 驗證 P1 (方向鍵 + M 鍵) 與 P2 (WXAD + V 鍵) 獨立控制與射擊！")
+    print("  ✓ 驗證二人子彈顏色截然不同 (金黃光 vs 翡翠紫光) 且尺寸縮小為二分之一 (6x12, 半徑3)！")
+    print("  ✓ 驗證敵機由上下左右四向突入，且 2 人模式數量加倍！")
+    print("  ✓ 驗證最後大魔王雙艦 (Boss 1 & Boss 2) 同時登場，雙 boss 全滅才過關！")
+    print("  ✓ 驗證其中一人五命耗盡後，透過 Y 鍵立即補滿 5 命與滿血復活！")
+    print("  -> 通過！")
+
 if __name__ == "__main__":
     print("==================================================")
     print(" 1945: 二戰空間（II War Space） 自動化測試驗證套件 ")
@@ -948,12 +1144,15 @@ if __name__ == "__main__":
         test_extended_stage_time_midboss_and_hud_cutout()
         test_multi_form_aerial_boss_naval_midboss_boundary_and_pacing()
         test_100_stereoscopic_scenery_powerup_drop_aerial_midboss_and_bottom_spawning()
+        test_two_player_coop_mode_and_rules()
         print("\n" + "=" * 50)
-        print(" 🎉 所有 26 項核心規則與強化遊戲系統測試全部 100% 通過！")
+        print(" 🎉 所有 27 項核心規則與強化遊戲系統測試全部 100% 通過！")
         print("==================================================")
         sys.exit(0)
     except AssertionError as e:
         print(f"\n❌ 測試失敗: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
     except Exception as e:
         print(f"\n❌ 發生例外錯誤: {e}")

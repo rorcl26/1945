@@ -11,7 +11,7 @@ from game.config import SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_YELLOW, COLOR_CYAN
 from game.sprites import create_bullet_sprite, create_powerup_sprite
 
 class Bullet:
-    def __init__(self, x, y, vx, vy, b_type="player_vulcan", damage=25, is_player=True):
+    def __init__(self, x, y, vx, vy, b_type="player_vulcan", damage=25, is_player=True, player_id=1):
         self.x = x
         self.y = y
         self.vx = vx
@@ -19,17 +19,18 @@ class Bullet:
         self.b_type = b_type
         self.damage = damage
         self.is_player = is_player
+        self.player_id = player_id
         self.alive = True
 
-        # 碰撞矩形
+        # 碰撞矩形 (題目要求：將子彈尺寸大小縮小為二分之一)
         if is_player:
-            self.radius = 6 if "laser" not in b_type else 8
+            self.radius = 3 if "laser" not in b_type else 4
         else:
             self.radius = 5 if "heavy" not in b_type else 9
 
-        # 圖形
+        # 圖形 (依 player_id 提供不同色彩與二分之一尺寸)
         angle = math.degrees(math.atan2(-vy, vx)) - 90
-        self.sprite = create_bullet_sprite(b_type, angle)
+        self.sprite = create_bullet_sprite(b_type, angle, player_id=player_id)
         self.rect = self.sprite.get_rect(center=(int(x), int(y)))
 
     def update(self, dt):
@@ -47,13 +48,14 @@ class Bullet:
 
 
 class HomingMissile(Bullet):
-    """追蹤微型火箭：朝向最近的敵機或 BOSS 轉向追擊"""
-    def __init__(self, x, y, vx, vy, damage=40, target=None):
-        super().__init__(x, y, vx, vy, "player_missile", damage, is_player=True)
+    """追蹤微型火箭：朝向最近的敵機或 BOSS 轉向追擊 (支援 P1/P2 專屬色彩與二分之一尺寸)"""
+    def __init__(self, x, y, vx, vy, damage=40, target=None, player_id=1):
+        super().__init__(x, y, vx, vy, "player_missile", damage, is_player=True, player_id=player_id)
         self.target = target
         self.speed = 9.0
         self.turn_rate = 0.08
         self.angle = math.atan2(vy, vx)
+        self.radius = 3
 
     def update(self, dt):
         # 尋找或更新目標
@@ -81,15 +83,15 @@ class HomingMissile(Bullet):
 class HomingLaser(Bullet):
     """
     我方高能自動追蹤雷射 (Auto-Targeting Homing Laser)
-    吃到雷射戰果 (L) 後獲得，雷射光柱具備自動搜尋敵機、地面戰車、海上戰艦與 BOSS 並弧形鎖定追蹤能力
+    吃到雷射戰果 (L) 後獲得，支援 P1/P2 色彩區分 (P1 碧藍 vs P2 洋紅) 與二分之一尺寸
     """
-    def __init__(self, x, y, vx=0, vy=-16, damage=35, target=None):
-        super().__init__(x, y, vx, vy, "player_homing_laser", damage, is_player=True)
+    def __init__(self, x, y, vx=0, vy=-16, damage=35, target=None, player_id=1):
+        super().__init__(x, y, vx, vy, "player_homing_laser", damage, is_player=True, player_id=player_id)
         self.target = target
         self.speed = 16.0
         self.turn_rate = 0.16  # 靈敏高響應追蹤鎖定
         self.angle = math.atan2(vy, vx)
-        self.radius = 9
+        self.radius = 4
         self.trail = []
 
     def update(self, dt):
@@ -118,12 +120,13 @@ class HomingLaser(Bullet):
             self.alive = False
 
     def draw(self, surf):
-        # 繪製高能雷射殘影光軌
+        # 繪製高能雷射殘影光軌 (P1 碧藍光芒 vs P2 洋紅光芒)
+        glow_color = (0, 255, 230) if self.player_id == 1 else (255, 60, 210)
         for i, (tx, ty) in enumerate(self.trail):
-            rad = max(2, int(4 * (i + 1) / len(self.trail)))
+            rad = max(1, int(3 * (i + 1) / len(self.trail)))
             alpha = int(120 * (i + 1) / len(self.trail))
             t_surf = pygame.Surface((rad * 2 + 2, rad * 2 + 2), pygame.SRCALPHA)
-            pygame.draw.circle(t_surf, (0, 255, 230, alpha), (rad + 1, rad + 1), rad)
+            pygame.draw.circle(t_surf, (*glow_color, alpha), (rad + 1, rad + 1), rad)
             surf.blit(t_surf, (tx - rad - 1, ty - rad - 1))
         surf.blit(self.sprite, self.rect)
 

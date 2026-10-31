@@ -904,49 +904,80 @@ def create_powerup_sprite(powerup_type, frame=0):
     return SpriteCache.set(key, surf)
 
 
-def create_bullet_sprite(b_type="player_vulcan", angle=0):
+def create_bullet_sprite(b_type="player_vulcan", angle=0, player_id=1):
     """
     各種類型的子彈圖形 (我方 vs 敵方在色彩與造型上極致分明)
-    我方：明亮金黃、耀眼青藍、穿透激光、白核心 (象徵光明與正義)
-    敵方：危險鮮紅、橙紅爆裂、紫紅毀滅彈、紅黑光暈 (象徵警戒與威脅)
+    【核心規則】：
+    1. 二人戰機射出的子彈顏色需不一樣 (P1 金藍光 vs P2 翠綠粉紫電)
+    2. 子彈尺寸大小縮小為原本的二分之一 (1/2 size 精細化彈幕)
     """
-    key = f"bullet_{b_type}_{int(angle) % 360}"
+    key = f"bullet_{b_type}_{int(angle) % 360}_p{player_id}"
     cached = SpriteCache.get(key)
     if cached:
         return cached
 
     if b_type == "player_vulcan":
-        surf = pygame.Surface((12, 24), pygame.SRCALPHA)
-        # 我方金黃高穿透機砲 (外金內白光暈)
-        pygame.draw.ellipse(surf, (255, 190, 40, 160), (0, 0, 12, 24))
-        pygame.draw.ellipse(surf, (255, 245, 90), (2, 2, 8, 20))
-        pygame.draw.ellipse(surf, COLOR_WHITE, (4, 4, 4, 14))
+        # 尺寸縮小為二分之一 (6x12，原 12x24)
+        surf = pygame.Surface((6, 12), pygame.SRCALPHA)
+        if player_id == 1:
+            # P1：經典金黃高穿透機砲
+            pygame.draw.ellipse(surf, (255, 190, 40, 180), (0, 0, 6, 12))
+            pygame.draw.ellipse(surf, (255, 245, 90), (1, 1, 4, 10))
+            pygame.draw.ellipse(surf, COLOR_WHITE, (2, 2, 2, 8))
+        else:
+            # P2：翡翠極光綠高能機砲 (鮮明對比 P1 金黃)
+            pygame.draw.ellipse(surf, (40, 240, 110, 180), (0, 0, 6, 12))
+            pygame.draw.ellipse(surf, (110, 255, 170), (1, 1, 4, 10))
+            pygame.draw.ellipse(surf, COLOR_WHITE, (2, 2, 2, 8))
+
     elif b_type == "player_wingman_bullet":
-        surf = pygame.Surface((10, 22), pygame.SRCALPHA)
-        # 僚機組合體高能脈衝光 (青藍高光，清爽分明)
-        pygame.draw.ellipse(surf, (60, 220, 255, 180), (0, 0, 10, 22))
-        pygame.draw.ellipse(surf, (160, 245, 255), (2, 2, 6, 18))
-        pygame.draw.ellipse(surf, COLOR_WHITE, (3, 4, 4, 12))
+        # 尺寸縮小為二分之一 (5x11，原 10x22)
+        surf = pygame.Surface((5, 11), pygame.SRCALPHA)
+        if player_id == 1:
+            # P1：青藍高光
+            pygame.draw.ellipse(surf, (60, 220, 255, 180), (0, 0, 5, 11))
+            pygame.draw.ellipse(surf, (160, 245, 255), (1, 1, 3, 9))
+        else:
+            # P2：嫩黃綠脈衝光
+            pygame.draw.ellipse(surf, (180, 255, 60, 180), (0, 0, 5, 11))
+            pygame.draw.ellipse(surf, (220, 255, 140), (1, 1, 3, 9))
+        pygame.draw.ellipse(surf, COLOR_WHITE, (1, 2, 3, 6))
+
     elif b_type == "player_spread":
-        surf = pygame.Surface((14, 18), pygame.SRCALPHA)
-        # 藍白重型能量散彈 (晶藍外圈與白芯)
-        pygame.draw.ellipse(surf, (40, 160, 255, 160), (0, 0, 14, 18))
-        pygame.draw.ellipse(surf, (90, 210, 255), (2, 1, 10, 15))
-        pygame.draw.ellipse(surf, COLOR_WHITE, (4, 3, 6, 9))
+        # 尺寸縮小為二分之一 (7x9，原 14x18)
+        surf = pygame.Surface((7, 9), pygame.SRCALPHA)
+        if player_id == 1:
+            # P1：晶藍散彈
+            pygame.draw.ellipse(surf, (40, 160, 255, 170), (0, 0, 7, 9))
+            pygame.draw.ellipse(surf, (90, 210, 255), (1, 1, 5, 7))
+        else:
+            # P2：紫電耀斑散彈 (霓虹紫)
+            pygame.draw.ellipse(surf, (210, 60, 255, 170), (0, 0, 7, 9))
+            pygame.draw.ellipse(surf, (240, 150, 255), (1, 1, 5, 7))
+        pygame.draw.ellipse(surf, COLOR_WHITE, (2, 2, 3, 5))
+
     elif b_type in ["player_laser", "player_homing_laser"]:
-        surf = pygame.Surface((12, 36), pygame.SRCALPHA)
-        # 高能自動追蹤雷射：耀眼極光碧藍光芒、穿透能量尖錐、核心白熱能量光柱
-        pygame.draw.ellipse(surf, (0, 240, 220, 160), (0, 0, 12, 36))
-        pygame.draw.ellipse(surf, (80, 255, 235), (2, 2, 8, 32))
-        pygame.draw.ellipse(surf, (220, 255, 255), (4, 4, 4, 28))
-        pygame.draw.circle(surf, COLOR_WHITE, (6, 6), 4)
+        # 尺寸縮小為二分之一 (6x18，原 12x36)
+        surf = pygame.Surface((6, 18), pygame.SRCALPHA)
+        if player_id == 1:
+            # P1：耀眼極光碧藍高能雷射
+            pygame.draw.ellipse(surf, (0, 240, 220, 180), (0, 0, 6, 18))
+            pygame.draw.ellipse(surf, (80, 255, 235), (1, 1, 4, 16))
+            pygame.draw.circle(surf, COLOR_WHITE, (3, 3), 2)
+        else:
+            # P2：霓虹玫瑰洋紅熱射線 (鮮明對比 P1 碧藍)
+            pygame.draw.ellipse(surf, (255, 50, 190, 180), (0, 0, 6, 18))
+            pygame.draw.ellipse(surf, (255, 140, 225), (1, 1, 4, 16))
+            pygame.draw.circle(surf, COLOR_WHITE, (3, 3), 2)
+
     elif b_type == "player_missile":
-        surf = pygame.Surface((12, 24), pygame.SRCALPHA)
-        # 微型追蹤火箭 (銀白彈體帶亮金彈頭與橙尾焰)
-        pygame.draw.rect(surf, (150, 165, 180), (3, 2, 6, 16), border_radius=2)
-        pygame.draw.polygon(surf, (255, 215, 0), [(6, 0), (2, 4), (10, 4)])
+        # 尺寸縮小為二分之一 (6x12，原 12x24)
+        surf = pygame.Surface((6, 12), pygame.SRCALPHA)
+        pygame.draw.rect(surf, (150, 165, 180), (1, 2, 4, 8), border_radius=1)
+        tip_color = (255, 215, 0) if player_id == 1 else (255, 80, 160)
+        pygame.draw.polygon(surf, tip_color, [(3, 0), (1, 3), (5, 3)])
         # 尾焰
-        pygame.draw.polygon(surf, COLOR_ORANGE, [(6, 24), (3, 18), (9, 18)])
+        pygame.draw.polygon(surf, COLOR_ORANGE, [(3, 12), (1, 9), (5, 9)])
     elif b_type == "enemy_bullet":
         surf = pygame.Surface((16, 16), pygame.SRCALPHA)
         # 【敵方危險血紅能量彈】：醒目紅色外光圈與亮橙核心，極度易於辨認與閃避

@@ -5,11 +5,39 @@
 
 import pygame
 
-# 視窗設定 (升級為 960x1024 寬幅高解析度戰場)
-SCREEN_WIDTH = 960
+# 視窗設定 (支援 1 人 960x10240 與 2 人 1024x10240 模式)
+SCREEN_WIDTH_1P = 960
+SCREEN_WIDTH_2P = 1024
+SCREEN_WIDTH = SCREEN_WIDTH_1P
 SCREEN_HEIGHT = 1024
 FPS = 60
 TITLE = "1945: 二戰空間（II War Space） - 經典二戰空戰過關"
+
+def set_screen_width(width):
+    global SCREEN_WIDTH
+    SCREEN_WIDTH = width
+
+# 雙人按鍵操作配置
+P1_CONTROLS = {
+    "up": pygame.K_UP,
+    "down": pygame.K_DOWN,
+    "left": pygame.K_LEFT,
+    "right": pygame.K_RIGHT,
+    "shoot": pygame.K_m,
+    "shoot_alt": pygame.K_SPACE,  # 1P 模式下相容空白鍵
+    "special": pygame.K_z
+}
+
+# Player 2 控制 (WXAD 上下左右, V 射擊)
+P2_CONTROLS = {
+    "up": pygame.K_w,
+    "down": pygame.K_x,           # 題目要求：以 WXAD 作為上下左右控制鍵
+    "down_alt": pygame.K_s,       # 相容備用向下鍵
+    "left": pygame.K_a,
+    "right": pygame.K_d,
+    "shoot": pygame.K_v,          # 題目要求：以 V 鍵作為射擊控制鍵
+    "special": pygame.K_c
+}
 
 # 螢幕上下獨立切割資訊列高度 (避免擋住控制空域)
 HUD_TOP_HEIGHT = 58
@@ -35,6 +63,22 @@ COLOR_GOLD = (255, 215, 0)
 COLOR_SHIELD = (80, 200, 255)
 COLOR_SHIELD_BORDER = (180, 240, 255)
 COLOR_BARREL_ROLL = (255, 255, 120)
+
+# 玩家 1 與 玩家 2 專屬彈幕光譜 (題目要求：二人戰機射出的子彈顏色需不一樣)
+P1_BULLET_PALETTE = {
+    "primary": (255, 220, 60),      # 耀眼金色
+    "glow": (255, 180, 30),
+    "laser": (40, 240, 255),        # 晶亮天藍
+    "spread": (90, 210, 255),
+    "missile": (255, 200, 40)
+}
+P2_BULLET_PALETTE = {
+    "primary": (50, 255, 130),      # 翡翠極光綠
+    "glow": (30, 210, 90),
+    "laser": (255, 70, 210),        # 霓虹熱粉紅
+    "spread": (210, 90, 255),       # 紫電耀斑
+    "missile": (255, 80, 80)
+}
 
 # 戰機選擇清單
 FIGHTER_TYPES = [

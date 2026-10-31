@@ -1,0 +1,9 @@
+II-WarSpace-1945-latest.tar.gz
+*.tar.gz
+*.tar
+.git
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/

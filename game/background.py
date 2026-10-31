@@ -100,10 +100,11 @@ class BackgroundManager:
         "stratosphere": {"cloud": (248, 252, 255), "shadow": (32, 55, 95), "alpha": 65}
     }
 
-    def __init__(self, theme="ocean_dawn", stage_idx=None, bg_images=None):
+    def __init__(self, theme="ocean_dawn", stage_idx=None, bg_images=None, screen_width=SCREEN_WIDTH):
         self.theme = theme
         self.stage_idx = stage_idx
         self.bg_images = bg_images
+        self.screen_width = screen_width
         self.scroll_y_scenic = 0.0
         self.scroll_y_waves = 0.0
         self.scroll_y_clouds = 0.0
@@ -117,7 +118,7 @@ class BackgroundManager:
         self.clouds = []
         for _ in range(3):
             self.clouds.append({
-                'x': random.randint(-20, SCREEN_WIDTH - 120),
+                'x': random.randint(-20, self.screen_width - 120),
                 'y': random.randint(-150, SCREEN_HEIGHT * 2),
                 'width': random.randint(180, 280),
                 'height': random.randint(70, 105),
@@ -129,7 +130,7 @@ class BackgroundManager:
         self.wave_glints = []
         for _ in range(30):
             self.wave_glints.append({
-                'x': random.randint(0, SCREEN_WIDTH),
+                'x': random.randint(0, self.screen_width),
                 'y': random.randint(0, SCREEN_HEIGHT),
                 'length': random.randint(15, 40),
                 'speed': random.uniform(0.8, 1.2),
@@ -139,6 +140,16 @@ class BackgroundManager:
         self.scenic_surfs = []
         self.scenic_surf = None
         self._load_theme_surface()
+
+    def set_screen_width(self, width):
+        """
+        【核心規則】：當選擇為 2 人時以 1024*10240 模式執行，選擇 1 人時以 960*10240 模式執行
+        動態調整實景長卷寬度與渲染解析度
+        """
+        if self.screen_width != width:
+            self.screen_width = width
+            self.scenic_surfs.clear()
+            self._load_theme_surface()
 
     def _get_asset_path(self, filename):
         """解析資源路徑，相容本機開發、Docker 容器與專案子目錄 (含 100 張山海實景庫)"""
@@ -193,21 +204,22 @@ class BackgroundManager:
 
     def _load_single_surface(self, filename):
         """載入單張立體實景頂視圖或超長縱向長卷 (支援 1024x10240、960x10240 與 960x1024)，並施加邊界無縫平滑處理"""
-        if filename in BackgroundManager._image_cache:
-            return BackgroundManager._image_cache[filename]
+        cache_key = (filename, self.screen_width)
+        if cache_key in BackgroundManager._image_cache:
+            return BackgroundManager._image_cache[cache_key]
 
         file_path = self._get_asset_path(filename)
         if file_path and os.path.exists(file_path):
             try:
                 raw_surf = pygame.image.load(file_path)
                 orig_w, orig_h = raw_surf.get_size()
-                if orig_w == SCREEN_WIDTH:
+                if orig_w == self.screen_width:
                     scaled = raw_surf
                 else:
-                    target_h = orig_h if orig_h >= 10240 else int(orig_h * (SCREEN_WIDTH / float(orig_w)))
-                    scaled = pygame.transform.smoothscale(raw_surf, (SCREEN_WIDTH, target_h))
+                    target_h = orig_h if orig_h >= 10240 else int(orig_h * (self.screen_width / float(orig_w)))
+                    scaled = pygame.transform.smoothscale(raw_surf, (self.screen_width, target_h))
                 seamless_surf = self._apply_seamless_loop(scaled)
-                BackgroundManager._image_cache[filename] = seamless_surf
+                BackgroundManager._image_cache[cache_key] = seamless_surf
                 return seamless_surf
             except Exception:
                 pass

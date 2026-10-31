@@ -13,26 +13,38 @@ from game.weapons import Bullet, PowerUp
 from game.audio import SoundManager
 
 class Boss:
-    def __init__(self, stage_info):
+    def __init__(self, stage_info, boss_id=1, offset_x=0, screen_width=SCREEN_WIDTH):
         self.stage = stage_info["stage"]
-        self.name = stage_info["boss_name"]
+        self.boss_id = boss_id
+        self.screen_width = screen_width
+        self.name = stage_info["boss_name"] + (f" (一號機)" if boss_id == 1 and offset_x != 0 else (f" (二號機)" if boss_id == 2 else ""))
         self.title = stage_info["boss_title"]
         self.boss_type = stage_info["boss_type"]
         self.hp = stage_info["boss_hp"]
         self.max_hp = stage_info["boss_hp"]
         self.bullet_mult = stage_info["bullet_speed_mult"]
 
-        # 初始登場位置 (從螢幕上方緩緩降臨)
-        self.x = SCREEN_WIDTH // 2
+        # 初始登場位置 (從螢幕上方緩緩降臨，支援雙魔王分列)
+        if boss_id == 2:
+            self.x = screen_width * 2 // 3 + offset_x
+            self.move_dir = -1
+            self.target_y = 170
+        elif offset_x != 0 or boss_id == 1 and screen_width > 960:
+            self.x = screen_width // 3 + offset_x
+            self.move_dir = 1
+            self.target_y = 145
+        else:
+            self.x = screen_width // 2
+            self.move_dir = 1
+            self.target_y = 150
+
         self.y = -140
-        self.target_y = 150
         self.is_entering = True
 
         # 移動航行參數
         self.alive = True
         self.is_defeated = False
         self.move_timer = 0.0
-        self.move_dir = 1
         self.speed = 1.6
 
         # 戰鬥計時器 (保證 2 到 5 分鐘的持久對戰)
@@ -123,7 +135,7 @@ class Boss:
         cur_spd = self.speed * (1.4 if self.current_phase == 3 else 1.0)
         self.move_timer += dt
         self.x += cur_spd * self.move_dir * dt * 60
-        if self.x > SCREEN_WIDTH - self.radius - 30:
+        if self.x > self.screen_width - self.radius - 30:
             self.move_dir = -1
         elif self.x < self.radius + 30:
             self.move_dir = 1

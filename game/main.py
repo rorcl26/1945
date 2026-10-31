@@ -14,7 +14,8 @@ import pygame
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from game.config import (
-    SCREEN_WIDTH, SCREEN_HEIGHT, FPS, TITLE, STAGES_DATA, FIGHTER_TYPES,
+    SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_WIDTH_1P, SCREEN_WIDTH_2P,
+    set_screen_width, FPS, TITLE, STAGES_DATA, FIGHTER_TYPES,
     MAX_LIVES, MAX_HP, DAMAGE_PER_HIT
 )
 from game.player import Player
@@ -29,7 +30,9 @@ from game.sprites import prewarm_all_sprites
 from game.weapons import Bullet, PowerUp
 
 # 遊戲狀態定義
+STATE_MODE_SELECT = "mode_select"
 STATE_SELECT = "select"
+STATE_PLANE_SELECT_2P = "plane_select_2p"
 STATE_PLAYING = "playing"
 STATE_BOSS_WARNING = "boss_warning"
 STATE_STAGE_CLEAR = "stage_clear"
@@ -38,12 +41,22 @@ STATE_VICTORY = "victory"
 STATE_PAUSED = "paused"
 
 class Game:
-    def __init__(self, start_stage=1, default_plane_idx=0, headless=False, cpu_mode=False, fullscreen=False):
+    def __init__(self, start_stage=1, default_plane_idx=0, headless=False, cpu_mode=False, fullscreen=False, num_players=1, p2_plane_idx=1):
         self.headless = headless
         self.cpu_mode = cpu_mode
         self.fullscreen = fullscreen
+        self.num_players = num_players
+        self.selected_mode = 0 if num_players == 1 else 1
         self.selected_plane_idx = default_plane_idx
+        self.p1_plane_idx = default_plane_idx
+        self.p2_plane_idx = p2_plane_idx if p2_plane_idx != default_plane_idx else (default_plane_idx + 1) % len(FIGHTER_TYPES)
+        self.selecting_player = 1
         self.current_stage_idx = max(0, min(19, start_stage - 1))
+
+        # 【核心規則】：當選擇為 2 人時背景以 1024*10240 模式執行，選擇 1 人時以 960*10240 模式執行
+        self.screen_width = SCREEN_WIDTH_2P if self.num_players == 2 else SCREEN_WIDTH_1P
+        self.screen_height = SCREEN_HEIGHT
+        set_screen_width(self.screen_width)
 
         # 初始化 Pygame
         if self.headless:
@@ -60,7 +73,7 @@ class Game:
         if self.fullscreen and not self.headless:
             flags |= pygame.FULLSCREEN
 
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags)
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), flags)
         self.clock = pygame.time.Clock()
         self.running = True
 
@@ -72,17 +85,20 @@ class Game:
         self.bg_mgr = BackgroundManager(
             stage_data["bg_theme"],
             stage_idx=self.current_stage_idx,
-            bg_images=stage_data.get("bg_images")
+            bg_images=stage_data.get("bg_images"),
+            screen_width=self.screen_width
         )
         self.fleet_mgr = NavalFleetManager()
 
-        # 遊戲進行中物件
+        # 遊戲進行中物件 (支援雙玩家與雙魔王)
         self.player = None
+        self.player2 = None
         self.enemies = []
         self.midboss = None
         self.midboss_spawned = False
         self.midboss_warning_timer = 0.0
         self.boss = None
+        self.bosses = []
         self.player_bullets = []
         self.enemy_bullets = []
         self.powerups = []
@@ -90,7 +106,7 @@ class Game:
         # 遊戲統計與時間
         self.score = 0
         self.high_score = 50000
-        self.state = STATE_SELECT
+        self.state = STATE_MODE_SELECT if not self.headless else STATE_PLAYING
         self.state_timer = 0.0
         self.stage_time = 0.0
         self.frame_count = 0
@@ -102,16 +118,48 @@ class Game:
         # 事先完成好所有精緻多彩精靈圖 (Pre-render and cache all sprites)
         prewarm_all_sprites()
 
-        # 如果透過命令列指定了預選戰機且處於測試模式，可直接進遊戲
+        # 如果處於測試模式，直接初始化並啟動
         if self.headless:
-            self.init_player(self.selected_plane_idx)
+            self.set_mode(self.num_players)
+            self.init_players()
             self.state = STATE_PLAYING
             self.sound_mgr.start_bgm()
 
+    def set_mode(self, num_players):
+        """切換 1 人模式 (960*10240) 與 2 人模式 (1024*10240)"""
+        self.num_players = num_players
+        self.screen_width = SCREEN_WIDTH_2P if num_players == 2 else SCREEN_WIDTH_1P
+        set_screen_width(self.screen_width)
+        flags = 0
+        if self.fullscreen and not self.headless:
+            flags |= pygame.FULLSCREEN
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), flags)
+        self.bg_mgr.set_screen_width(self.screen_width)
+
+    def init_players(self):
+        """依模式與選擇機型建立玩家戰機"""
+        if self.num_players == 2:
+            cfg1 = FIGHTER_TYPES[self.p1_plane_idx]
+            cfg2 = FIGHTER_TYPES[self.p2_plane_idx]
+            self.player = Player(cfg1, player_id=1, screen_width=self.screen_width)
+            self.player2 = Player(cfg2, player_id=2, screen_width=self.screen_width)
+        else:
+            cfg1 = FIGHTER_TYPES[self.selected_plane_idx]
+            self.player = Player(cfg1, player_id=1, screen_width=self.screen_width)
+            self.player2 = None
+
     def init_player(self, plane_idx):
-        """依玩家選擇的機型建立戰機"""
-        fighter_cfg = FIGHTER_TYPES[plane_idx]
-        self.player = Player(fighter_cfg)
+        """相容單機介面"""
+        self.selected_plane_idx = plane_idx
+        self.p1_plane_idx = plane_idx
+        self.init_players()
+
+    def get_closest_player(self, x, y):
+        """取得距指定座標最近的存活玩家戰機"""
+        active = [p for p in [self.player, self.player2] if p and p.alive]
+        if not active:
+            return self.player or self.player2
+        return min(active, key=lambda p: math.hypot(p.x - x, p.y - y))
 
     def load_stage(self, stage_idx):
         """載入指定關卡"""
@@ -126,6 +174,7 @@ class Game:
         # 清除戰場上殘餘的敵機與所有子彈 (杜絕過關子彈停留至下一關背景)
         self.enemies.clear()
         self.boss = None
+        self.bosses.clear()
         self.midboss = None
         self.midboss_spawned = False
         self.midboss_warning_timer = 0.0
@@ -138,6 +187,8 @@ class Game:
         self.fleet_mgr.reset_for_stage()
         if self.player:
             self.player.fire_timer = 0.0
+        if self.player2:
+            self.player2.fire_timer = 0.0
 
     def on_enemy_defeated(self, enemy=None):
         """
@@ -167,9 +218,8 @@ class Game:
         # 3. 大幅增加陸地上坦克車出現的數量 (短間隔 + 多輛戰車編隊巡邏)
         self.tank_spawn_timer -= dt
         if self.tank_spawn_timer <= 0:
-            self.tank_spawn_timer = random.uniform(2.5, 4.5)
-            # 每次生成 1~3 輛戰車部署於陸地防線
-            t_count = random.choice([1, 2, 2, 3])
+            self.tank_spawn_timer = random.uniform(2.5, 4.5) * (0.6 if self.num_players == 2 else 1.0)
+            t_count = random.choice([1, 2, 2, 3]) * (2 if self.num_players == 2 else 1)
             for _ in range(t_count):
                 tank_x = random.choice([
                     random.randint(400, 560),  # 中間陸地核心陣地
@@ -194,34 +244,48 @@ class Game:
         }
 
         # 【核心規則】：各型戰機與船艦出現以隨機方式出現，且需有固定比率讓畫面都有敵機出現
-        # 4. 固定比率保底敵機機制：檢驗畫面中空中敵機數量，若低於保底閾值立即隨機補充
+        # 4. 固定比率保底敵機機制：2 人模式空中敵機數量保底加倍 (8 架)
         air_enemies = [e for e in self.enemies if not getattr(e, 'is_tank', False) and getattr(e, 'enemy_type', '') != "sea_destroyer"]
-        MIN_AIR_ENEMIES_ON_SCREEN = 4
-        if len(air_enemies) < MIN_AIR_ENEMIES_ON_SCREEN and (not self.boss or self.boss.is_entering):
+        MIN_AIR_ENEMIES_ON_SCREEN = 8 if self.num_players == 2 else 4
+        has_boss_active = bool(self.bosses and any(b.alive and not b.is_entering for b in self.bosses))
+
+        if len(air_enemies) < MIN_AIR_ENEMIES_ON_SCREEN and not has_boss_active:
             sup_type = random.choice(["scout_zero", "fast_interceptor", "twin_bomber", "heavy_gunship"])
-            # 【核心規則】：敵方戰機可由下方出現，不是全由上方出現
-            from_bottom = (random.random() < 0.35)
-            if from_bottom:
+            # 【核心規則】：敵方可由上下左右出現 (top, bottom, left, right)
+            spawn_dir = random.choices(["top", "bottom", "left", "right"], weights=[40, 26, 17, 17])[0]
+            if spawn_dir == "bottom":
                 sup_pattern = random.choice(["climb_straight", "climb_sine", "climb_swoop_left", "climb_swoop_right", "dive_loop"])
-                spawn_y = SCREEN_HEIGHT + 45 + random.randint(0, 30)
+                sx = random.randint(90, self.screen_width - 90)
+                sy = SCREEN_HEIGHT + 45 + random.randint(0, 30)
+            elif spawn_dir == "left":
+                sup_pattern = random.choice(["straight", "sine", "swoop_up", "swoop_down", "dive_loop"])
+                sx = -45 - random.randint(0, 30)
+                sy = random.randint(120, SCREEN_HEIGHT - 220)
+            elif spawn_dir == "right":
+                sup_pattern = random.choice(["straight", "sine", "swoop_up", "swoop_down", "dive_loop"])
+                sx = self.screen_width + 45 + random.randint(0, 30)
+                sy = random.randint(120, SCREEN_HEIGHT - 220)
             else:
                 sup_pattern = random.choice(["straight", "sine", "dive_loop", "swoop_left", "swoop_right"])
-                spawn_y = -45 - random.randint(0, 30)
+                sx = random.randint(90, self.screen_width - 90)
+                sy = -45 - random.randint(0, 30)
 
             self.enemies.append(Enemy(
-                random.randint(90, SCREEN_WIDTH - 90), spawn_y,
+                sx, sy,
                 enemy_type=sup_type,
                 hp=hp_map.get(sup_type, 25),
                 pattern=sup_pattern,
                 speed=random.uniform(3.0, 4.2),
                 bullet_mult=stage_data["bullet_speed_mult"],
-                spawn_from_bottom=from_bottom
+                spawn_direction=spawn_dir,
+                screen_width=self.screen_width
             ))
 
-        # 5. 常規敵機波次隨機生成
+        # 5. 常規敵機波次隨機生成：【核心規則】2人模式敵機數量加倍出現
         if self.enemy_spawn_timer <= 0:
             density = stage_data["enemy_density"]
-            self.enemy_spawn_timer = random.uniform(1.2, 2.2) / density
+            rate_factor = 0.5 if self.num_players == 2 else 1.0
+            self.enemy_spawn_timer = (random.uniform(1.2, 2.2) / density) * rate_factor
 
             # 依機率隨機選擇敵機種類與編隊型態
             e_type = random.choices(
@@ -229,35 +293,95 @@ class Game:
                 weights=[42, 28, 16, 8, 6]
             )[0]
 
-            # 【核心規則】：敵方戰機可由下方出現，不是全由上方出現 (海軍戰艦除外)
-            spawn_from_bottom = (random.random() < 0.32) if e_type != "sea_destroyer" else False
-            if spawn_from_bottom:
-                pattern = random.choice(["climb_straight", "climb_sine", "climb_swoop_left", "climb_swoop_right", "dive_loop"])
-            else:
-                pattern = random.choice(["straight", "sine", "dive_loop", "swoop_left", "swoop_right", "hover"])
-
-            # 編隊成行產生 (一次出動 1~3 架)
-            spawn_count = 1 if e_type in ["heavy_gunship", "twin_bomber", "sea_destroyer"] else random.randint(1, 3)
-            # 【核心規則】：敵方戰艦 (含驅逐巡防艦 sea_destroyer) 一定只能在海上出現！
             if e_type == "sea_destroyer":
+                spawn_dir = "top"
+                pattern = "hover"
+                spawn_count = 1 if self.num_players == 1 else 2
                 base_x = random.choice([random.randint(220, 340), random.randint(620, 740)])
+                for i in range(spawn_count):
+                    self.enemies.append(Enemy(
+                        base_x + i * 80, -50 - i * 40,
+                        enemy_type=e_type,
+                        hp=hp_map[e_type],
+                        pattern=pattern,
+                        speed=random.uniform(2.5, 3.5),
+                        bullet_mult=stage_data["bullet_speed_mult"],
+                        spawn_direction="top",
+                        screen_width=self.screen_width
+                    ))
             else:
-                base_x = random.randint(80, SCREEN_WIDTH - 80)
-            for i in range(spawn_count):
-                ox = (i - (spawn_count - 1) / 2) * 50
-                spawn_y = (SCREEN_HEIGHT + 40 + i * 35) if spawn_from_bottom else (-40 - i * 35)
-                self.enemies.append(Enemy(
-                    base_x + ox, spawn_y,
-                    enemy_type=e_type,
-                    hp=hp_map[e_type],
-                    pattern=pattern,
-                    speed=random.uniform(2.8, 4.2),
-                    bullet_mult=stage_data["bullet_speed_mult"],
-                    spawn_from_bottom=spawn_from_bottom
-                ))
+                # 【核心規則】：敵方可由上下左右出現
+                spawn_dir = random.choices(["top", "bottom", "left", "right"], weights=[40, 26, 17, 17])[0]
+                if spawn_dir == "bottom":
+                    pattern = random.choice(["climb_straight", "climb_sine", "climb_swoop_left", "climb_swoop_right", "dive_loop"])
+                elif spawn_dir in ["left", "right"]:
+                    pattern = random.choice(["straight", "sine", "swoop_up", "swoop_down", "dive_loop"])
+                else:
+                    pattern = random.choice(["straight", "sine", "dive_loop", "swoop_left", "swoop_right", "hover"])
+
+                # 編隊成行產生 (2人模式數量加倍)
+                base_count = 1 if e_type in ["heavy_gunship", "twin_bomber"] else random.randint(1, 3)
+                spawn_count = base_count * (2 if self.num_players == 2 else 1)
+
+                if spawn_dir == "left":
+                    base_y = random.randint(120, SCREEN_HEIGHT - 220)
+                    for i in range(spawn_count):
+                        self.enemies.append(Enemy(
+                            -40 - i * 40, base_y + (i - (spawn_count - 1) / 2) * 45,
+                            enemy_type=e_type,
+                            hp=hp_map[e_type],
+                            pattern=pattern,
+                            speed=random.uniform(2.8, 4.2),
+                            bullet_mult=stage_data["bullet_speed_mult"],
+                            spawn_direction="left",
+                            screen_width=self.screen_width
+                        ))
+                elif spawn_dir == "right":
+                    base_y = random.randint(120, SCREEN_HEIGHT - 220)
+                    for i in range(spawn_count):
+                        self.enemies.append(Enemy(
+                            self.screen_width + 40 + i * 40, base_y + (i - (spawn_count - 1) / 2) * 45,
+                            enemy_type=e_type,
+                            hp=hp_map[e_type],
+                            pattern=pattern,
+                            speed=random.uniform(2.8, 4.2),
+                            bullet_mult=stage_data["bullet_speed_mult"],
+                            spawn_direction="right",
+                            screen_width=self.screen_width
+                        ))
+                elif spawn_dir == "bottom":
+                    base_x = random.randint(80, self.screen_width - 80)
+                    for i in range(spawn_count):
+                        ox = (i - (spawn_count - 1) / 2) * 50
+                        spawn_y = SCREEN_HEIGHT + 40 + i * 35
+                        self.enemies.append(Enemy(
+                            base_x + ox, spawn_y,
+                            enemy_type=e_type,
+                            hp=hp_map[e_type],
+                            pattern=pattern,
+                            speed=random.uniform(2.8, 4.2),
+                            bullet_mult=stage_data["bullet_speed_mult"],
+                            spawn_direction="bottom",
+                            screen_width=self.screen_width
+                        ))
+                else:  # top
+                    base_x = random.randint(80, self.screen_width - 80)
+                    for i in range(spawn_count):
+                        ox = (i - (spawn_count - 1) / 2) * 50
+                        spawn_y = -40 - i * 35
+                        self.enemies.append(Enemy(
+                            base_x + ox, spawn_y,
+                            enemy_type=e_type,
+                            hp=hp_map[e_type],
+                            pattern=pattern,
+                            speed=random.uniform(2.8, 4.2),
+                            bullet_mult=stage_data["bullet_speed_mult"],
+                            spawn_direction="top",
+                            screen_width=self.screen_width
+                        ))
 
     def handle_collisions(self):
-        """碰撞檢測與傷害結算 (嚴格滿足核心規則)"""
+        """碰撞檢測與傷害結算 (支援雙玩家、雙大魔王與核心規則)"""
         # 1. 玩家子彈 vs 敵機
         for b in self.player_bullets:
             if not b.alive:
@@ -317,50 +441,59 @@ class Game:
                         self.sound_mgr.play("boss_explosion")
                     continue
 
-            # 玩家子彈 vs BOSS
-            if self.boss and self.boss.alive and not self.boss.is_entering:
-                b_dist = math.hypot(b.x - self.boss.x, b.y - self.boss.y)
-                if b_dist < b.radius + self.boss.radius:
-                    b.alive = False
-                    self.particle_mgr.add_bullet_hit(b.x, b.y)
-                    is_boss_dead = self.boss.take_damage(b.damage)
-                    if is_boss_dead:
-                        self.score += 5000 + self.current_stage_idx * 1000
-                        self.particle_mgr.add_explosion(self.boss.x, self.boss.y, scale=3.5, is_boss=True)
-                        self.powerups.extend(self.boss.spawn_drops())
-                        self.sound_mgr.play("victory")
-                        self.state = STATE_STAGE_CLEAR
-                        self.state_timer = 4.0
-                        # 【核心修復】：BOSS 被擊潰過關時，立即清空滯空的所有子彈，杜絕殘留漂浮至下一關背景
-                        self.player_bullets.clear()
-                        self.enemy_bullets.clear()
+            # 玩家子彈 vs BOSS (支援最後大魔王兩隻)
+            for b_obj in self.bosses:
+                if b_obj and b_obj.alive and not b_obj.is_entering and not b_obj.is_defeated:
+                    b_dist = math.hypot(b.x - b_obj.x, b.y - b_obj.y)
+                    if b_dist < b.radius + b_obj.radius:
+                        b.alive = False
+                        self.particle_mgr.add_bullet_hit(b.x, b.y)
+                        is_boss_dead = b_obj.take_damage(b.damage)
+                        if is_boss_dead:
+                            self.score += 5000 + self.current_stage_idx * 1000
+                            self.particle_mgr.add_explosion(b_obj.x, b_obj.y, scale=3.5, is_boss=True)
+                            self.powerups.extend(b_obj.spawn_drops())
+                            # 【核心規則】：當兩隻大魔王全部滅亡時，過關結算
+                            if all((not b_item.alive or b_item.is_defeated) for b_item in self.bosses):
+                                self.sound_mgr.play("victory")
+                                self.state = STATE_STAGE_CLEAR
+                                self.state_timer = 4.0
+                                self.player_bullets.clear()
+                                self.enemy_bullets.clear()
+                        break
 
-        # 2. 敵方子彈 vs 玩家 (【核心規則】：損失十分之一生命力，五次完整生命力)
-        if self.player and self.player.alive:
-            for eb in self.enemy_bullets:
-                if not eb.alive:
+        # 2. 敵方子彈 vs 玩家 (遍歷 P1 與 P2)
+        active_players = [p for p in [self.player, self.player2] if p and p.alive]
+        for eb in self.enemy_bullets:
+            if not eb.alive:
+                continue
+            for plyr in active_players:
+                if not plyr.alive:
                     continue
-                p_dist = math.hypot(eb.x - self.player.x, eb.y - self.player.y)
-                if p_dist < eb.radius + self.player.radius:
+                p_dist = math.hypot(eb.x - plyr.x, eb.y - plyr.y)
+                if p_dist < eb.radius + plyr.radius:
                     eb.alive = False
-                    hit_result = self.player.take_hit()
+                    hit_result = plyr.take_hit()
                     if hit_result == True:
-                        # 喪失一次完整生命力：產生劇烈爆炸與震動
-                        self.particle_mgr.add_explosion(self.player.x, self.player.y, scale=2.5)
+                        self.particle_mgr.add_explosion(plyr.x, plyr.y, scale=2.5)
                         self.sound_mgr.play("explosion")
-                        if self.player.game_over:
+                        # 檢查是否所有玩家均已喪失全部 5 條命
+                        if all(p is None or not p.alive for p in [self.player, self.player2]):
                             self.state = STATE_GAME_OVER
                             self.state_timer = 0.0
                     elif hit_result == "damaged":
-                        # 損失十分之一生命力 (10 HP)：產生火星
-                        self.particle_mgr.add_bullet_hit(self.player.x, self.player.y, (255, 100, 100))
+                        self.particle_mgr.add_bullet_hit(plyr.x, plyr.y, (255, 100, 100))
+                    break
 
-            # 3. 玩家 vs 敵機撞擊
-            for e in self.enemies:
-                if not e.alive:
+        # 3. 玩家 vs 敵機撞擊
+        for e in self.enemies:
+            if not e.alive:
+                continue
+            for plyr in active_players:
+                if not plyr.alive:
                     continue
-                c_dist = math.hypot(self.player.x - e.x, self.player.y - e.y)
-                if c_dist < self.player.radius + e.radius:
+                c_dist = math.hypot(plyr.x - e.x, plyr.y - e.y)
+                if c_dist < plyr.radius + e.radius:
                     e.take_damage(999)
                     self.particle_mgr.add_explosion(e.x, e.y, scale=1.2)
                     self.sound_mgr.play("tank_explosion" if getattr(e, 'is_tank', False) else "explosion")
@@ -369,22 +502,27 @@ class Game:
                         if self.enemy_plane_kill_count % 5 == 0:
                             self.powerups.append(PowerUp(e.x, e.y, random.choice(['P', 'S', 'B', 'W', 'L'])))
                     self.on_enemy_defeated(e)
-                    hit_res = self.player.take_hit()
+                    hit_res = plyr.take_hit()
                     if hit_res == True:
-                        self.particle_mgr.add_explosion(self.player.x, self.player.y, scale=2.5)
-                        if self.player.game_over:
+                        self.particle_mgr.add_explosion(plyr.x, plyr.y, scale=2.5)
+                        if all(p is None or not p.alive for p in [self.player, self.player2]):
                             self.state = STATE_GAME_OVER
+                    break
 
-            # 4. 玩家 vs 戰果拾取 (【核心規則】：增加射擊戰力與防護罩)
-            for p in self.powerups:
-                if not p.alive:
+        # 4. 玩家 vs 戰果拾取
+        for p in self.powerups:
+            if not p.alive:
+                continue
+            for plyr in active_players:
+                if not plyr.alive:
                     continue
-                u_dist = math.hypot(self.player.x - p.x, self.player.y - p.y)
-                if u_dist < self.player.radius + p.radius:
+                u_dist = math.hypot(plyr.x - p.x, plyr.y - p.y)
+                if u_dist < plyr.radius + p.radius:
                     p.alive = False
                     self.score += 500
-                    self.player.apply_powerup(p.type)
+                    plyr.apply_powerup(p.type)
                     self.particle_mgr.add_bullet_hit(p.x, p.y, (100, 255, 200))
+                    break
 
     def update(self, dt):
         """核心遊戲狀態更新"""
@@ -392,27 +530,34 @@ class Game:
         self.bg_mgr.update(dt)
         self.particle_mgr.update(dt)
 
-        if self.state == STATE_SELECT:
-            # 戰機選擇選單狀態
+        if self.state in [STATE_MODE_SELECT, STATE_SELECT, STATE_PLANE_SELECT_2P, STATE_PAUSED]:
             return
 
-        if self.state == STATE_PAUSED:
-            return
-
-        if self.state == STATE_PLAYING or self.state == STATE_BOSS_WARNING:
+        if self.state in [STATE_PLAYING, STATE_BOSS_WARNING]:
             self.stage_time += dt
             stage_data = STAGES_DATA[self.current_stage_idx]
 
-            # 戰機更新
+            # 戰機更新 (支援雙玩家)
             if self.player and self.player.alive:
                 self.player.update(dt)
+            if self.player2 and self.player2.alive:
+                self.player2.update(dt)
 
-            # BOSS 出現判斷
-            if self.stage_time >= stage_data["spawn_duration"] and not self.boss:
+            # BOSS 出現判斷：【核心規則】最後的大魔王需有兩隻
+            if self.stage_time >= stage_data["spawn_duration"] and not self.bosses:
                 self.state = STATE_BOSS_WARNING
                 self.state_timer = 2.5
                 self.sound_mgr.play("boss_alert")
-                self.boss = Boss(stage_data)
+                if self.num_players == 2:
+                    # 雙魔王登場：Boss 1 與 Boss 2 分列左右
+                    b1 = Boss(stage_data, boss_id=1, offset_x=-80, screen_width=self.screen_width)
+                    b2 = Boss(stage_data, boss_id=2, offset_x=80, screen_width=self.screen_width)
+                    self.bosses = [b1, b2]
+                    self.boss = b1
+                else:
+                    b1 = Boss(stage_data, boss_id=1, offset_x=0, screen_width=self.screen_width)
+                    self.bosses = [b1]
+                    self.boss = b1
 
             # 警告倒數結束後進入 BOSS 戰
             if self.state == STATE_BOSS_WARNING:
@@ -421,12 +566,13 @@ class Game:
                     self.state = STATE_PLAYING
 
             # 產生敵機 (BOSS 未出線前或戰況中定期增援)
-            if not self.boss or self.boss.is_entering:
+            if not self.bosses or any(b.is_entering for b in self.bosses):
                 self.spawn_enemies(dt)
 
             # 更新敵機 (坦克在陸地上推進，遇到海面邊界停在該處)
-            p_pos = (self.player.x, self.player.y) if self.player else (SCREEN_WIDTH // 2, SCREEN_HEIGHT - 100)
             for e in self.enemies:
+                p_close = self.get_closest_player(e.x, e.y)
+                p_pos = (p_close.x, p_close.y) if p_close else (self.screen_width // 2, SCREEN_HEIGHT - 100)
                 if hasattr(e, 'is_tank'):
                     e.update(dt, p_pos, self.bg_mgr)
                 else:
@@ -436,7 +582,9 @@ class Game:
                     self.enemy_bullets.extend(new_b)
 
             # 更新海面敵主力艦隊 (艦砲齊射與航母艦載機起飛)
-            fleet_bullets, fleet_planes = self.fleet_mgr.update(dt, p_pos)
+            p_ref = self.get_closest_player(self.screen_width // 2, SCREEN_HEIGHT - 100)
+            p_ref_pos = (p_ref.x, p_ref.y) if p_ref else (self.screen_width // 2, SCREEN_HEIGHT - 100)
+            fleet_bullets, fleet_planes = self.fleet_mgr.update(dt, p_ref_pos)
             self.enemy_bullets.extend(fleet_bullets)
             for fp in fleet_planes:
                 self.enemies.append(Enemy(
@@ -445,7 +593,9 @@ class Game:
                     hp=25,
                     pattern=fp['pattern'],
                     speed=3.6,
-                    bullet_mult=stage_data["bullet_speed_mult"]
+                    bullet_mult=stage_data["bullet_speed_mult"],
+                    spawn_direction="top",
+                    screen_width=self.screen_width
                 ))
 
             # 更新中型大魔王 (Mid-Boss 巡弋於海面，遇到陸地邊界停在該處)
@@ -455,24 +605,29 @@ class Game:
             if self.midboss:
                 self.midboss.update(dt, self.bg_mgr)
                 if self.midboss.alive:
+                    target_p = self.get_closest_player(self.midboss.x, self.midboss.y)
+                    p_pos = (target_p.x, target_p.y) if target_p else p_ref_pos
                     new_b = self.midboss.attack(dt, p_pos)
                     self.enemy_bullets.extend(new_b)
                 elif not self.midboss.alive:
                     self.midboss = None
 
-            # 更新 BOSS
-            if self.boss:
-                self.boss.update(dt)
-                if self.boss.alive:
-                    new_b = self.boss.attack(dt, p_pos)
+            # 更新 BOSS (支援雙大魔王)
+            for b_obj in self.bosses:
+                b_obj.update(dt)
+                if b_obj.alive:
+                    target_p = self.get_closest_player(b_obj.x, b_obj.y)
+                    p_pos = (target_p.x, target_p.y) if target_p else p_ref_pos
+                    new_b = b_obj.attack(dt, p_pos)
                     self.enemy_bullets.extend(new_b)
 
-            # 更新玩家子彈 (雷射與追蹤飛彈自動搜尋最近敵機、戰車、軍艦、中型大魔王或 BOSS)
+            # 更新玩家子彈 (雷射與追蹤飛彈自動搜尋最近目標)
             potential_targets = []
             if self.midboss and self.midboss.alive and not self.midboss.is_entering:
                 potential_targets.append(self.midboss)
-            if self.boss and self.boss.alive and not self.boss.is_entering:
-                potential_targets.append(self.boss)
+            for b_obj in self.bosses:
+                if b_obj and b_obj.alive and not b_obj.is_entering:
+                    potential_targets.append(b_obj)
             for e in self.enemies:
                 if e.alive:
                     potential_targets.append(e)
@@ -482,7 +637,6 @@ class Game:
 
             for b in self.player_bullets:
                 if hasattr(b, 'target'):
-                    # 若現有目標已死或不存在，動態重新鎖定最近目標
                     if not getattr(b.target, 'alive', False) or getattr(b.target, 'is_sinking', False):
                         if potential_targets:
                             b.target = min(potential_targets, key=lambda t: math.hypot(b.x - t.x, b.y - t.y))
@@ -494,8 +648,10 @@ class Game:
             for eb in self.enemy_bullets:
                 eb.update(dt)
 
-            # 更新戰果
+            # 更新戰果 (飄向最近玩家)
             for p in self.powerups:
+                target_p = self.get_closest_player(p.x, p.y)
+                p_pos = (target_p.x, target_p.y) if target_p else p_ref_pos
                 p.update(dt, p_pos)
 
             # 清理失效物件
@@ -508,46 +664,51 @@ class Game:
             self.handle_collisions()
 
         elif self.state == STATE_STAGE_CLEAR:
-            # 過關展示期間持續清空殘留子彈，杜絕漂浮停滯至下一關
             self.player_bullets.clear()
             self.enemy_bullets.clear()
             self.state_timer -= dt
             if self.state_timer <= 0:
                 if self.current_stage_idx + 1 < len(STAGES_DATA):
-                    # 前往下一大關！(共 20 大關)
                     self.load_stage(self.current_stage_idx + 1)
                     self.state = STATE_PLAYING
                 else:
-                    # 突破全 20 大關！終極通關！
                     self.state = STATE_VICTORY
 
     def draw(self):
         """畫面繪製與 GPU/CPU 渲染管線"""
-        # 取得震動偏移量
-        ox, oy = self.particle_mgr.get_shake_offset()
         render_surf = self.screen
+
+        if self.state == STATE_MODE_SELECT:
+            self.ui_mgr.draw_mode_select(render_surf, self.selected_mode, self.frame_count)
+            pygame.display.flip()
+            return
 
         if self.state == STATE_SELECT:
             self.ui_mgr.draw_plane_select(render_surf, self.selected_plane_idx, self.frame_count)
             pygame.display.flip()
             return
 
+        if self.state == STATE_PLANE_SELECT_2P:
+            self.ui_mgr.draw_plane_select_2p(render_surf, self.p1_plane_idx, self.p2_plane_idx, self.selecting_player, self.frame_count)
+            pygame.display.flip()
+            return
+
         # 1. 繪製多層視差海洋與地表背景
         self.bg_mgr.draw(render_surf)
 
-        # 2. 繪製海面敵主力聯合艦隊 (在海洋層上航行，具備洶湧航跡浪花)
+        # 2. 繪製海面敵主力聯合艦隊
         self.fleet_mgr.draw(render_surf)
 
-        # 3. 繪製海面或地表敵軍 (海軍巡邏艇)
+        # 3. 繪製海面敵軍
         for e in self.enemies:
             if e.enemy_type == "sea_destroyer":
                 e.draw(render_surf)
 
-        # 4. 繪製戰利品寶物 (P, S, B, W, L)
+        # 4. 繪製戰利品寶物
         for p in self.powerups:
             p.draw(render_surf)
 
-        # 5. 繪製空戰敵機、地面戰車、中型大魔王與終極 BOSS
+        # 5. 繪製空戰敵機、地面戰車、中型大魔王與雙大魔王
         for e in self.enemies:
             if e.enemy_type != "sea_destroyer":
                 e.draw(render_surf)
@@ -555,33 +716,36 @@ class Game:
         if self.midboss and (self.midboss.alive or self.midboss.is_defeated):
             self.midboss.draw(render_surf)
 
-        if self.boss and (self.boss.alive or self.boss.is_defeated):
-            self.boss.draw(render_surf)
+        for b_obj in self.bosses:
+            if b_obj and (b_obj.alive or b_obj.is_defeated):
+                b_obj.draw(render_surf)
 
-        # 6. 繪製玩家戰機
+        # 6. 繪製玩家戰機 (支援雙戰機同屏)
         if self.player:
             self.player.draw(render_surf, self.particle_mgr)
+        if self.player2:
+            self.player2.draw(render_surf, self.particle_mgr)
 
-        # 7. 繪製子彈 (我軍自動追蹤雷射與機砲，過關結算與通關期間不繪製任何殘留子彈)
+        # 7. 繪製子彈
         if self.state not in [STATE_STAGE_CLEAR, STATE_VICTORY]:
             for b in self.player_bullets:
                 b.draw(render_surf)
             for eb in self.enemy_bullets:
                 eb.draw(render_surf)
 
-        # 8. 繪製粒子特效 (火花、濃煙、殘影、衝擊波)
+        # 8. 繪製粒子特效
         self.particle_mgr.draw(render_surf)
 
-        # 9. 繪製 HUD 與 UI (上下獨立切割防遮擋、中型魔王血條、終極敵艦外型與擊破倒數)
+        # 9. 繪製 HUD 與 UI
         cur_stage = STAGES_DATA[self.current_stage_idx]
-        if self.player:
+        if self.num_players == 2:
+            self.ui_mgr.draw_hud_2p(render_surf, self.player, self.player2, self.score, self.high_score, cur_stage, self.bosses, midboss=self.midboss)
+        else:
             self.ui_mgr.draw_hud(render_surf, self.player, self.score, self.high_score, cur_stage, self.boss, midboss=self.midboss)
 
-        # 中型大魔王警報橫幅
         if self.midboss_warning_timer > 0:
             self.ui_mgr.draw_midboss_warning(render_surf, self.midboss_warning_timer, cur_stage.get("midboss_name", "中型先鋒巡弋艇"))
 
-        # 敵海上主力艦隊警報橫幅
         if self.fleet_mgr.warning_active:
             self.ui_mgr.draw_fleet_warning(render_surf, self.fleet_mgr.warning_timer)
 
@@ -597,7 +761,6 @@ class Game:
         elif self.state == STATE_VICTORY:
             self.ui_mgr.draw_victory_all(render_surf, self.score)
 
-        # 僅調用單次 flip，杜絕雙緩衝衝突產生的橫條紋與畫面撕裂
         pygame.display.flip()
 
     def run_frame(self, dt=1.0 / 60.0, simulated_keys=None):
@@ -612,25 +775,86 @@ class Game:
                     self.running = False
                     return
 
-                if self.state == STATE_SELECT:
-                    # 戰機選擇操作
+                # 【核心規則】：當其中一人的五個生命都損失後，透過 Y 鍵可以補滿。
+                if event.key == pygame.K_y:
+                    revived = False
+                    if self.player and not self.player.alive:
+                        self.player.revive()
+                        revived = True
+                    if self.player2 and not self.player2.alive:
+                        self.player2.revive()
+                        revived = True
+                    if self.num_players == 1 and self.player and not self.player.alive:
+                        self.player.revive()
+                        revived = True
+                    if revived and self.state == STATE_GAME_OVER:
+                        self.state = STATE_PLAYING
+
+                if self.state == STATE_MODE_SELECT:
+                    # 作戰模式選擇 (1人 vs 2人)
+                    if event.key in [pygame.K_UP, pygame.K_w]:
+                        self.selected_mode = 0
+                    elif event.key in [pygame.K_DOWN, pygame.K_s]:
+                        self.selected_mode = 1
+                    elif event.key in [pygame.K_SPACE, pygame.K_RETURN, pygame.K_m]:
+                        if self.selected_mode == 0:
+                            self.set_mode(1)
+                            self.state = STATE_SELECT
+                        else:
+                            self.set_mode(2)
+                            self.selecting_player = 1
+                            self.state = STATE_PLANE_SELECT_2P
+
+                elif self.state == STATE_SELECT:
+                    # 1人模式戰機選擇
                     if event.key in [pygame.K_UP, pygame.K_w]:
                         self.selected_plane_idx = (self.selected_plane_idx - 1) % len(FIGHTER_TYPES)
                     elif event.key in [pygame.K_DOWN, pygame.K_s]:
                         self.selected_plane_idx = (self.selected_plane_idx + 1) % len(FIGHTER_TYPES)
-                    elif event.key in [pygame.K_SPACE, pygame.K_RETURN]:
-                        # 確認出擊！啟動動態背景音樂
-                        self.init_player(self.selected_plane_idx)
+                    elif event.key in [pygame.K_SPACE, pygame.K_RETURN, pygame.K_m]:
+                        self.init_players()
                         self.load_stage(self.current_stage_idx)
                         self.state = STATE_PLAYING
                         self.sound_mgr.start_bgm()
 
+                elif self.state == STATE_PLANE_SELECT_2P:
+                    # 2人模式戰機選擇：【核心規則】第一人先選4種之一，第二人只能選剩下3種之一
+                    if self.selecting_player == 1:
+                        if event.key in [pygame.K_UP, pygame.K_w]:
+                            self.p1_plane_idx = (self.p1_plane_idx - 1) % len(FIGHTER_TYPES)
+                        elif event.key in [pygame.K_DOWN, pygame.K_s]:
+                            self.p1_plane_idx = (self.p1_plane_idx + 1) % len(FIGHTER_TYPES)
+                        elif event.key in [pygame.K_m, pygame.K_SPACE, pygame.K_RETURN]:
+                            self.selecting_player = 2
+                            if self.p2_plane_idx == self.p1_plane_idx:
+                                self.p2_plane_idx = (self.p1_plane_idx + 1) % len(FIGHTER_TYPES)
+                    else:
+                        # 第 2 人以 WX (或方向鍵) 選擇，跳過第 1 人已選之機型
+                        step = 0
+                        if event.key in [pygame.K_w, pygame.K_UP]:
+                            step = -1
+                        elif event.key in [pygame.K_x, pygame.K_s, pygame.K_DOWN]:
+                            step = 1
+
+                        if step != 0:
+                            nxt = (self.p2_plane_idx + step) % len(FIGHTER_TYPES)
+                            if nxt == self.p1_plane_idx:
+                                nxt = (nxt + step) % len(FIGHTER_TYPES)
+                            self.p2_plane_idx = nxt
+
+                        elif event.key in [pygame.K_v, pygame.K_RETURN, pygame.K_SPACE]:
+                            self.init_players()
+                            self.load_stage(self.current_stage_idx)
+                            self.state = STATE_PLAYING
+                            self.sound_mgr.start_bgm()
+
                 elif self.state in [STATE_PLAYING, STATE_BOSS_WARNING]:
-                    if event.key == pygame.K_z:
-                        # 【核心規則】：當出警示提示時，不能限制控制功能讓戰機還能被控制 (翻轉閃避 / 形成防護罩)
-                        if self.player:
-                            self.player.trigger_special()
-                    elif event.key == pygame.K_p:
+                    # 特殊技能觸發：P1 用 Z 或 N，P2 用 C
+                    if event.key in [pygame.K_z, pygame.K_n] and self.player:
+                        self.player.trigger_special()
+                    if event.key == pygame.K_c and self.player2:
+                        self.player2.trigger_special()
+                    if event.key == pygame.K_p:
                         self.state = STATE_PAUSED
 
                 elif self.state == STATE_PAUSED:
@@ -639,39 +863,74 @@ class Game:
 
                 elif self.state in [STATE_GAME_OVER, STATE_VICTORY]:
                     if event.key == pygame.K_RETURN:
-                        # 重新開始遊戲
                         self.score = 0
-                        self.selected_plane_idx = 0
-                        self.state = STATE_SELECT
+                        self.state = STATE_MODE_SELECT
+
+        keys = simulated_keys if simulated_keys is not None else pygame.key.get_pressed()
+
+        def is_down(k):
+            try:
+                return bool(keys[k])
+            except (KeyError, IndexError, TypeError):
+                return False
+
+        # 【核心規則】：當其中一人的五個生命都損失後，透過 Y 鍵可以補滿 (支援連續按鍵與模擬按鍵)
+        if is_down(pygame.K_y):
+            revived = False
+            if self.player and not self.player.alive:
+                self.player.revive()
+                revived = True
+            if self.player2 and not self.player2.alive:
+                self.player2.revive()
+                revived = True
+            if self.num_players == 1 and self.player and not self.player.alive:
+                self.player.revive()
+                revived = True
+            if revived and self.state == STATE_GAME_OVER:
+                self.state = STATE_PLAYING
 
         # 處理連續按鍵輸入 (移動與射擊)
-        # 【核心規則】：當出警示提示時 (如 STATE_BOSS_WARNING 或敵艦隊突入警報)，不能限制控制功能，戰機必須還能被自由控制！
-        if self.state in [STATE_PLAYING, STATE_BOSS_WARNING] and self.player and self.player.alive:
-            keys = simulated_keys if simulated_keys is not None else pygame.key.get_pressed()
-            # 上下左右移動
-            self.player.handle_input(keys, dt)
+        if self.state in [STATE_PLAYING, STATE_BOSS_WARNING]:
 
-            # 【核心規則】：當我方戰機往前移動時加快畫面往前移動速度
-            if keys[pygame.K_UP] or keys[pygame.K_w]:
-                self.bg_mgr.scroll_speed_mult = 2.4
-            else:
-                self.bg_mgr.scroll_speed_mult = 1.0
+            # 鎖定最近目標庫
+            potential_targets = []
+            if self.midboss and self.midboss.alive and not self.midboss.is_entering:
+                potential_targets.append(self.midboss)
+            for b_obj in self.bosses:
+                if b_obj.alive and not b_obj.is_entering:
+                    potential_targets.append(b_obj)
+            for e in self.enemies:
+                if e.alive:
+                    potential_targets.append(e)
+            for s in self.fleet_mgr.ships:
+                if s.alive and not s.is_sinking:
+                    potential_targets.append(s)
 
-            # 空白鍵發射子彈 (高能追蹤雷射自動鎖定最近之敵軍：BOSS、空中敵機、陸地戰車或海上戰艦)
-            if keys[pygame.K_SPACE]:
-                potential_targets = []
-                if self.boss and self.boss.alive and not self.boss.is_entering:
-                    potential_targets.append(self.boss)
-                for e in self.enemies:
-                    if e.alive:
-                        potential_targets.append(e)
-                for s in self.fleet_mgr.ships:
-                    if s.alive and not s.is_sinking:
-                        potential_targets.append(s)
+            # 1. 第一人 (P1) 控制：【核心規則】以上下左右為主要控制方式，以 M 鍵作為射擊控制
+            if self.player and self.player.alive:
+                self.player.handle_input(keys, dt, is_2p=(self.num_players == 2))
 
-                closest = min(potential_targets, key=lambda t: math.hypot(self.player.x - t.x, self.player.y - t.y)) if potential_targets else None
-                bullets = self.player.shoot(closest)
-                self.player_bullets.extend(bullets)
+                if self.player.check_shoot(keys, is_2p=(self.num_players == 2)):
+                    closest = min(potential_targets, key=lambda t: math.hypot(self.player.x - t.x, self.player.y - t.y)) if potential_targets else None
+                    bullets = self.player.shoot(closest)
+                    self.player_bullets.extend(bullets)
+
+                if keys[pygame.K_UP] or (self.num_players == 1 and keys[pygame.K_w]):
+                    self.bg_mgr.scroll_speed_mult = 2.4
+                else:
+                    self.bg_mgr.scroll_speed_mult = 1.0
+
+            # 2. 第二人 (P2) 控制：【核心規則】以 WXAD 作為上下左右控制鍵，以 V 鍵作為射擊控制鍵
+            if self.player2 and self.player2.alive:
+                self.player2.handle_input(keys, dt, is_2p=True)
+
+                if self.player2.check_shoot(keys, is_2p=True):
+                    closest = min(potential_targets, key=lambda t: math.hypot(self.player2.x - t.x, self.player2.y - t.y)) if potential_targets else None
+                    bullets = self.player2.shoot(closest)
+                    self.player_bullets.extend(bullets)
+
+                if keys[pygame.K_w]:
+                    self.bg_mgr.scroll_speed_mult = 2.4
 
         # 遊戲循環更新與繪製
         self.update(dt)
@@ -698,7 +957,9 @@ def main():
     parser.add_argument("--test", action="store_true", help="執行無介面自動測試模式")
     parser.add_argument("--frames", type=int, default=0, help="限制運行幀數 (用於健康檢查)")
     parser.add_argument("--stage", type=int, default=1, help="指定起始關卡 (1-20)")
-    parser.add_argument("--plane", type=int, default=0, help="指定預選戰機 (0-3)")
+    parser.add_argument("--plane", type=int, default=0, help="指定第1人預選戰機 (0-3)")
+    parser.add_argument("--players", type=int, choices=[1, 2], default=1, help="指定玩家人數 (1 或 2)")
+    parser.add_argument("--p2-plane", type=int, default=1, help="指定第2人預選戰機 (0-3)")
     parser.add_argument("--cpu-mode", action="store_true", help="啟用 CPU 軟體渲染相容模式")
     parser.add_argument("--fullscreen", action="store_true", help="全螢幕顯示")
     args = parser.parse_args()
@@ -708,7 +969,9 @@ def main():
         default_plane_idx=args.plane,
         headless=args.test,
         cpu_mode=args.cpu_mode,
-        fullscreen=args.fullscreen
+        fullscreen=args.fullscreen,
+        num_players=args.players,
+        p2_plane_idx=args.p2_plane_idx if hasattr(args, 'p2_plane_idx') else args.p2_plane
     )
     max_frames = args.frames if args.frames > 0 else (120 if args.test else None)
     game.run(max_frames=max_frames)

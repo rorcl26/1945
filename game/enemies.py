@@ -13,11 +13,18 @@ from game.weapons import Bullet, PowerUp
 from game.audio import SoundManager
 
 class Enemy:
-    def __init__(self, x, y, enemy_type="scout_zero", hp=None, pattern="straight", speed=3.0, bullet_mult=1.0, spawn_from_bottom=False):
+    def __init__(self, x, y, enemy_type="scout_zero", hp=None, pattern="straight", speed=3.0, bullet_mult=1.0, spawn_from_bottom=False, spawn_direction=None, screen_width=SCREEN_WIDTH):
         self.x = x
         self.y = y
         self.enemy_type = enemy_type
-        self.spawn_from_bottom = spawn_from_bottom
+        self.screen_width = screen_width
+
+        # 【核心規則】：敵方可由上下左右出現 (top, bottom, left, right)
+        if spawn_direction is None:
+            self.spawn_direction = "bottom" if spawn_from_bottom else "top"
+        else:
+            self.spawn_direction = spawn_direction
+        self.spawn_from_bottom = (self.spawn_direction == "bottom")
 
         # 敵機血量設定：中間的敵人飛機在打擊 1 至 2 次後才潰敗 (玩家單發子彈傷害約 25~35)
         if hp is None:
@@ -50,6 +57,7 @@ class Enemy:
 
         # 軌跡運算
         self.init_x = x
+        self.init_y = y
         self.time = 0.0
 
         # 射擊計時
@@ -85,23 +93,37 @@ class Enemy:
         # 受損引擎黑煙粒子更新
         if self.is_smoking:
             if random.random() < 0.4:
-                smoke_vy = random.uniform(1.0, 2.5) if self.spawn_from_bottom else -random.uniform(1.0, 2.5)
+                if self.spawn_direction == "bottom":
+                    smoke_vx, smoke_vy = 0, random.uniform(1.0, 2.5)
+                    ox, oy = random.randint(-4, 4), 10
+                elif self.spawn_direction == "top":
+                    smoke_vx, smoke_vy = 0, -random.uniform(1.0, 2.5)
+                    ox, oy = random.randint(-4, 4), -10
+                elif self.spawn_direction == "left":
+                    smoke_vx, smoke_vy = -random.uniform(1.0, 2.5), 0
+                    ox, oy = -10, random.randint(-4, 4)
+                else:  # right
+                    smoke_vx, smoke_vy = random.uniform(1.0, 2.5), 0
+                    ox, oy = 10, random.randint(-4, 4)
+
                 self.smoke_particles.append({
-                    'x': self.x + random.randint(-4, 4),
-                    'y': self.y + (10 if self.spawn_from_bottom else -10),
+                    'x': self.x + ox,
+                    'y': self.y + oy,
                     'radius': random.uniform(3.0, 7.0),
                     'alpha': 180,
+                    'vx': smoke_vx,
                     'vy': smoke_vy
                 })
 
         for p in self.smoke_particles:
-            p['y'] += p['vy'] * dt * 60
+            p['x'] += p.get('vx', 0) * dt * 60
+            p['y'] += p.get('vy', 0) * dt * 60
             p['radius'] += 0.25
             p['alpha'] = max(0, p['alpha'] - int(350 * dt))
         self.smoke_particles = [p for p in self.smoke_particles if p['alpha'] > 0]
 
-        # 【核心規則】：敵方戰機可由下方出現向上突擊，不是全由上方出現
-        if self.spawn_from_bottom:
+        # 【核心規則】：敵方戰機可由上下左右出現 (top, bottom, left, right)
+        if self.spawn_direction == "bottom":
             if self.pattern in ["climb_straight", "straight"]:
                 self.y -= self.speed * dt * 60
             elif self.pattern in ["climb_sine", "sine"]:
@@ -120,8 +142,51 @@ class Enemy:
                     self.y += 1.5 * dt * 60
             else:
                 self.y -= self.speed * dt * 60
+
+        elif self.spawn_direction == "left":
+            # 由左方出現向右方突進
+            if self.pattern == "straight":
+                self.x += self.speed * dt * 60
+            elif self.pattern == "sine":
+                self.x += self.speed * dt * 60
+                self.y = self.init_y + 80 * math.sin(self.time * 2.5)
+            elif self.pattern in ["swoop_left", "swoop_up"]:
+                self.x += self.speed * dt * 60
+                self.y -= 2.0 * dt * 60
+            elif self.pattern in ["swoop_right", "swoop_down"]:
+                self.x += self.speed * dt * 60
+                self.y += 2.0 * dt * 60
+            elif self.pattern == "dive_loop":
+                self.x += self.speed * dt * 60
+                if self.x > 180 and self.time < 3.0:
+                    self.y += 3.5 * math.sin(self.time * 3.5) * dt * 60
+                    self.x -= 1.0 * dt * 60
+            else:
+                self.x += self.speed * dt * 60
+
+        elif self.spawn_direction == "right":
+            # 由右方出現向左方突進
+            if self.pattern == "straight":
+                self.x -= self.speed * dt * 60
+            elif self.pattern == "sine":
+                self.x -= self.speed * dt * 60
+                self.y = self.init_y + 80 * math.sin(self.time * 2.5)
+            elif self.pattern in ["swoop_left", "swoop_up"]:
+                self.x -= self.speed * dt * 60
+                self.y -= 2.0 * dt * 60
+            elif self.pattern in ["swoop_right", "swoop_down"]:
+                self.x -= self.speed * dt * 60
+                self.y += 2.0 * dt * 60
+            elif self.pattern == "dive_loop":
+                self.x -= self.speed * dt * 60
+                if self.x < self.screen_width - 180 and self.time < 3.0:
+                    self.y += 3.5 * math.sin(self.time * 3.5) * dt * 60
+                    self.x += 1.0 * dt * 60
+            else:
+                self.x -= self.speed * dt * 60
+
         else:
-            # 依不同移動路徑進行航行 (Formation Flight Paths)
+            # 依不同移動路徑由上方進行航行 (Formation Flight Paths from Top)
             if self.pattern == "straight":
                 self.y += self.speed * dt * 60
             elif self.pattern == "sine":
@@ -146,12 +211,18 @@ class Enemy:
 
         self.rect.center = (int(self.x), int(self.y))
 
-        # 超出螢幕邊界刪除
-        if self.spawn_from_bottom:
-            if self.y < -70 or self.x < -80 or self.x > SCREEN_WIDTH + 80:
+        # 超出螢幕邊界刪除 (上下左右四向判定)
+        if self.spawn_direction == "bottom":
+            if self.y < -80 or self.x < -80 or self.x > self.screen_width + 80:
                 self.alive = False
-        else:
-            if self.y > SCREEN_HEIGHT + 70 or self.x < -80 or self.x > SCREEN_WIDTH + 80:
+        elif self.spawn_direction == "top":
+            if self.y > SCREEN_HEIGHT + 80 or self.x < -80 or self.x > self.screen_width + 80:
+                self.alive = False
+        elif self.spawn_direction == "left":
+            if self.x > self.screen_width + 80 or self.y < -80 or self.y > SCREEN_HEIGHT + 80:
+                self.alive = False
+        elif self.spawn_direction == "right":
+            if self.x < -80 or self.y < -80 or self.y > SCREEN_HEIGHT + 80:
                 self.alive = False
 
     def check_shoot(self, dt, player_pos):
@@ -228,9 +299,13 @@ class Enemy:
 
         spr = create_enemy_sprite(self.enemy_type, self.frame // 3)
 
-        # 【核心規則】：由下方出現之敵機機頭朝上衝刺
-        if self.spawn_from_bottom:
+        # 【核心規則】：依敵方出現方向 (上下左右) 朝向行進方向
+        if self.spawn_direction == "bottom":
             spr = pygame.transform.flip(spr, False, True)
+        elif self.spawn_direction == "left":
+            spr = pygame.transform.rotate(spr, 90)
+        elif self.spawn_direction == "right":
+            spr = pygame.transform.rotate(spr, -90)
 
         # 受創白熱/紅閃爍
         if self.flash_timer > 0:
