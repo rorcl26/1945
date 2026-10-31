@@ -1,0 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Large Docker image archive (exceeds GitHub 100MB limit)
+# The image can be rebuilt with: docker build -t sky-fury-1942:latest .
+sky-fury-1942-latest.tar.gz
+*.tar.gz
+*.tar
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo

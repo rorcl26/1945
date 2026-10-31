@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1942: 天空狂怒 - 100張立體實景山海頂視圖 (960x10240) 全景畫廊</title>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --panel-bg: rgba(18, 24, 38, 0.85);
+            --border-color: rgba(64, 120, 220, 0.3);
+            --accent-color: #38bdf8;
+            --accent-gold: #fbbf24;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang TC", "Noto Sans TC", sans-serif;
+            overflow-x: hidden;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 頂部導航控制欄 */
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 24px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-title h1 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: var(--accent-color);
+        }
+
+        .badge {
+            background: rgba(56, 189, 248, 0.15);
+            color: var(--accent-color);
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        button {
+            background: rgba(30, 41, 59, 0.9);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85rem;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        button:hover {
+            background: rgba(56, 189, 248, 0.2);
+            border-color: var(--accent-color);
+            color: #fff;
+        }
+
+        button.primary {
+            background: #0284c7;
+            border-color: #38bdf8;
+        }
+
+        button.primary:hover {
+            background: #0369a1;
+        }
+
+        /* 主舞台視窗 */
+        main {
+            flex: 1;
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .viewer-container {
+            flex: 1;
+            background: #050811;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+        }
+
+        .viewer-header {
+            padding: 12px 20px;
+            background: rgba(15, 23, 42, 0.8);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .info-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: var(--accent-gold);
+        }
+
+        .info-meta {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            display: flex;
+            gap: 15px;
+        }
+
+        .viewport-scroll {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            max-height: 75vh;
+            display: flex;
+            justify-content: center;
+            background: #02040a;
+            position: relative;
+        }
+
+        .current-image {
+            width: 100%;
+            max-width: 960px;
+            height: auto;
+            display: block;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0.4; }
+            to { opacity: 1; }
+        }
+
+        /* 右側縮圖導航面板 */
+        .sidebar {
+            width: 320px;
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            max-height: calc(75vh + 50px);
+        }
+
+        .sidebar-header {
+            padding: 12px 16px;
+            background: rgba(15, 23, 42, 0.8);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .thumb-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .thumb-card {
+            background: rgba(2, 6, 23, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .thumb-card:hover {
+            border-color: var(--accent-color);
+            transform: translateY(-2px);
+        }
+
+        .thumb-card.active {
+            border-color: var(--accent-gold);
+            box-shadow: 0 0 12px rgba(251, 191, 36, 0.4);
+        }
+
+        .thumb-card img {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .thumb-info {
+            padding: 6px 8px;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            background: rgba(15, 23, 42, 0.9);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .thumb-card.active .thumb-info {
+            color: var(--accent-gold);
+            font-weight: bold;
+        }
+
+        /* 滾動條樣式 */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(56, 189, 248, 0.3);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(56, 189, 248, 0.6);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-title">
+            <h1>1942: 天空狂怒 立體實景全景畫廊</h1>
+            <span class="badge">Google Gemini Banana 生成</span>
+            <span class="badge" style="border-color: rgba(251, 191, 36, 0.4); color: var(--accent-gold);">100張 (960x10240)</span>
+        </div>
+        <div class="controls">
+            <button id="prevBtn">◀ 上一張</button>
+            <button id="playBtn" class="primary">▶ 自動逐一播放</button>
+            <button id="nextBtn">下一張 ▶</button>
+            <button id="resetScrollBtn">頂端起飛點</button>
+        </div>
+    </header>
+
+    <main>
+        <div class="viewer-container">
+            <div class="viewer-header">
+                <div>
+                    <span id="currentTitle" class="info-title">scenic_ms_001.jpg - 翡翠碧海珊瑚海島</span>
+                </div>
+                <div class="info-meta">
+                    <span>尺寸: <strong style="color:#fff;">960 x 10240</strong></span>
+                    <span>所屬關卡: <strong id="stageInfo" style="color:var(--accent-color);">第 01 關 航段 1/5</strong></span>
+                    <span>進度: <strong id="progressInfo" style="color:var(--accent-gold);">001 / 100</strong></span>
+                </div>
+            </div>
+            <div class="viewport-scroll" id="scrollBox">
+                <img id="mainImage" class="current-image" src="scenic_ms_001.jpg" alt="Scenic Background">
+            </div>
+        </div>
+
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <span>100 張背景圖清單導航</span>
+                <span id="listCounter" style="color: var(--accent-color);">100 項</span>
+            </div>
+            <div class="thumb-list" id="thumbList"></div>
+        </aside>
+    </main>
+
+    <script>
+        const THEMES = [
+            "翡翠碧海珊瑚海島", "破曉晨曦微金光海山", "熱帶群島蔚藍碧海青山",
+            "夕陽晚霞橙紅海岸山脈", "火山黑曜岩島深海峽灣", "血月猩紅氣息海岬峰巒",
+            "極地冷冽藍霜冰海峽灣", "午夜幽深暗夜海角山脈", "極光流轉碧綠光輝海山",
+            "高空平流層極致湛藍海山"
+        ];
+
+        let currentIndex = 1;
+        let isPlaying = false;
+        let playInterval = null;
+
+        const mainImage = document.getElementById('mainImage');
+        const currentTitle = document.getElementById('currentTitle');
+        const stageInfo = document.getElementById('stageInfo');
+        const progressInfo = document.getElementById('progressInfo');
+        const scrollBox = document.getElementById('scrollBox');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const playBtn = document.getElementById('playBtn');
+        const resetScrollBtn = document.getElementById('resetScrollBtn');
+        const thumbList = document.getElementById('thumbList');
+
+        // 初始化縮圖列表
+        for (let i = 1; i <= 100; i++) {
+            const card = document.createElement('div');
+            card.className = `thumb-card ${i === 1 ? 'active' : ''}`;
+            card.id = `thumb-${i}`;
+            const themeName = THEMES[(i - 1) % THEMES.length];
+            const numStr = String(i).padStart(3, '0');
+            
+            card.innerHTML = `
+                <img src="previews/thumb_ms_${numStr}.jpg" alt="ms_${numStr}" loading="lazy">
+                <div class="thumb-info">#${numStr} ${themeName}</div>
+            `;
+            card.addEventListener('click', () => {
+                showImage(i);
+            });
+            thumbList.appendChild(card);
+        }
+
+        function showImage(idx) {
+            currentIndex = idx;
+            const numStr = String(idx).padStart(3, '0');
+            const themeName = THEMES[(idx - 1) % THEMES.length];
+            const stageNum = Math.floor((idx - 1) / 5) + 1;
+            const segNum = ((idx - 1) % 5) + 1;
+
+            mainImage.src = `scenic_ms_${numStr}.jpg`;
+            currentTitle.textContent = `scenic_ms_${numStr}.jpg - ${themeName}`;
+            stageInfo.textContent = `第 ${String(stageNum).padStart(2, '0')} 關 航段 ${segNum}/5`;
+            progressInfo.textContent = `${numStr} / 100`;
+
+            // 更新縮圖選中狀態
+            document.querySelectorAll('.thumb-card').forEach(el => el.classList.remove('active'));
+            const activeCard = document.getElementById(`thumb-${idx}`);
+            if (activeCard) {
+                activeCard.classList.add('active');
+                activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+
+            // 平滑滾動至底端或頂端 (模擬飛行視角)
+            scrollBox.scrollTop = scrollBox.scrollHeight;
+        }
+
+        prevBtn.addEventListener('click', () => {
+            let nextIdx = currentIndex - 1;
+            if (nextIdx < 1) nextIdx = 100;
+            showImage(nextIdx);
+        });
+
+        nextBtn.addEventListener('click', () => {
+            let nextIdx = currentIndex + 1;
+            if (nextIdx > 100) nextIdx = 1;
+            showImage(nextIdx);
+        });
+
+        resetScrollBtn.addEventListener('click', () => {
+            scrollBox.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        playBtn.addEventListener('click', () => {
+            if (isPlaying) {
+                clearInterval(playInterval);
+                playInterval = null;
+                isPlaying = false;
+                playBtn.textContent = '▶ 自動逐一播放';
+                playBtn.classList.add('primary');
+            } else {
+                isPlaying = true;
+                playBtn.textContent = '⏸ 暫停播放';
+                playBtn.classList.remove('primary');
+                playInterval = setInterval(() => {
+                    let nextIdx = currentIndex + 1;
+                    if (nextIdx > 100) nextIdx = 1;
+                    showImage(nextIdx);
+                }, 1800);
+            }
+        });
+
+        // 鍵盤左右方向鍵導航
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') prevBtn.click();
+            if (e.key === 'ArrowRight') nextBtn.click();
+            if (e.key === ' ') {
+                e.preventDefault();
+                playBtn.click();
+            }
+        });
+    </script>
+</body>
+</html>

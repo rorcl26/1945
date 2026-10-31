@@ -1,0 +1,61 @@
+services:
+  # 1. GPU 硬體加速模式 (推薦：適合具備 NVIDIA GPU 之環境)
+  game-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sky-fury-1942:latest
+    container_name: sky-fury-gpu
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - XAUTHORITY=${XAUTHORITY}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
+      - SDL_VIDEODRIVER=x11
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /dev/dri:/dev/dri
+      - /dev/shm:/dev/shm
+      - /dev/snd:/dev/snd
+      - /run/user/1000/pulse:/run/user/1000/pulse
+      - ${XAUTHORITY:-/tmp}:${XAUTHORITY:-/tmp}:ro
+    devices:
+      - /dev/dri:/dev/dri
+    ipc: host
+    network_mode: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # 2. 無 GPU / CPU 軟體渲染模式 (相容任意純 CPU 環境)
+  game-cpu:
+    image: sky-fury-1942:latest
+    container_name: sky-fury-cpu
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - XAUTHORITY=${XAUTHORITY}
+      - LIBGL_ALWAYS_SOFTWARE=1
+      - SDL_RENDER_DRIVER=software
+      - SDL_VIDEODRIVER=x11
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /dev/dri:/dev/dri
+      - /dev/shm:/dev/shm
+      - /dev/snd:/dev/snd
+      - /run/user/1000/pulse:/run/user/1000/pulse
+      - ${XAUTHORITY:-/tmp}:${XAUTHORITY:-/tmp}:ro
+    devices:
+      - /dev/dri:/dev/dri
+    ipc: host
+    network_mode: host
+
+  # 3. 自動化測試驗證服務 (Headless 模式，純映像檔內部驗證)
+  test:
+    image: sky-fury-1942:latest
+    entrypoint: ["python3", "/app/test_game.py"]
