@@ -192,7 +192,7 @@ class BackgroundManager:
         return seamless
 
     def _load_single_surface(self, filename):
-        """載入單張立體實景頂視圖或超長縱向長卷 (支援 960x10240 與 960x1024)，並施加邊界無縫平滑處理"""
+        """載入單張立體實景頂視圖或超長縱向長卷 (支援 1024x10240、960x10240 與 960x1024)，並施加邊界無縫平滑處理"""
         if filename in BackgroundManager._image_cache:
             return BackgroundManager._image_cache[filename]
 
@@ -204,7 +204,7 @@ class BackgroundManager:
                 if orig_w == SCREEN_WIDTH:
                     scaled = raw_surf
                 else:
-                    target_h = int(orig_h * (SCREEN_WIDTH / float(orig_w)))
+                    target_h = orig_h if orig_h >= 10240 else int(orig_h * (SCREEN_WIDTH / float(orig_w)))
                     scaled = pygame.transform.smoothscale(raw_surf, (SCREEN_WIDTH, target_h))
                 seamless_surf = self._apply_seamless_loop(scaled)
                 BackgroundManager._image_cache[filename] = seamless_surf

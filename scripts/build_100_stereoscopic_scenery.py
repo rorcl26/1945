@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """
-立體實景有山有海頂視圖 100 張超長縱向卷軸 (960x10240) 批量生成引擎
+立體實景有山有海頂視圖 100 張超長縱向卷軸 (1024x10240) 批量生成引擎
 直接基於 Google Gemini Banana 生成之真實空照照片母盤，
 以高解析多尺度取景、幾何翻轉走勢、10 段無縫餘弦平滑融接 (Cosine Cross-fade Blend)、
 電影級大氣色彩渲染與首尾無限循環過渡，
-生成 100 張 100% 擬真立體、超長 960x10240 縱向山海航道頂視實景背景圖。
+生成 100 張 100% 擬真立體、超長 1024x10240 縱向山海航道頂視實景背景圖。
 """
 
 import os
 import math
 import random
 import time
+import multiprocessing
 import numpy as np
-from PIL import Image, ImageOps, ImageEnhance
+from PIL import Image
 
-TARGET_WIDTH = 960
+TARGET_WIDTH = 1024
 TARGET_HEIGHT = 10240
 NUM_SEGMENTS = 10
 SEGMENT_HEIGHT = 1024
@@ -99,14 +100,14 @@ def generate_segment_slice(master_img, target_w, target_h, seed):
     # 雙三次採樣至目標尺寸
     return cropped.resize((target_w, target_h), Image.Resampling.BICUBIC)
 
-def build_single_960x10240_image(img_idx, masters, theme):
+def build_single_1024x10240_image(img_idx, masters, theme):
     """
-    自真實 Google Gemini Banana 空照母盤合成一張完整的 960x10240 超長無縫航道頂視圖。
+    自真實 Google Gemini Banana 空照母盤合成一張完整的 1024x10240 超長無縫航道頂視圖。
     10 段連續平滑餘弦融接，上下兩端首尾銜接。
     """
     rnd = random.Random(7777 + img_idx * 131)
     
-    # 預備畫布陣列 (10240, 960, 3)
+    # 預備畫布陣列 (10240, 1024, 3)
     canvas = np.zeros((TARGET_HEIGHT, TARGET_WIDTH, 3), dtype=np.float32)
 
     # 交叉融接權重曲線 (OVERLAP, 1, 1)
@@ -164,9 +165,29 @@ def build_single_960x10240_image(img_idx, masters, theme):
     canvas = np.clip(canvas, 0, 255).astype(np.uint8)
     return Image.fromarray(canvas, mode="RGB")
 
+def _worker_generate(args):
+    """多程序工作線程"""
+    i, masters, output_dir, thumbs_dir = args
+    theme = THEME_PALETTES[(i - 1) % len(THEME_PALETTES)]
+    t0 = time.time()
+    long_img = build_single_1024x10240_image(i, masters, theme)
+
+    filename = f"scenic_ms_{i:03d}.jpg"
+    out_p = os.path.join(output_dir, filename)
+    long_img.save(out_p, quality=88, optimize=True)
+
+    # 同時生成方便快速瀏覽的預覽縮圖 (寬度 256, 高度 2560)
+    thumb_img = long_img.resize((256, 2560), Image.Resampling.BILINEAR)
+    thumb_p = os.path.join(thumbs_dir, f"thumb_ms_{i:03d}.jpg")
+    thumb_img.save(thumb_p, quality=82)
+
+    file_kb = os.path.getsize(out_p) / 1024.0
+    elapsed = time.time() - t0
+    return i, filename, theme["title"], file_kb, elapsed
+
 def main():
     print("==================================================")
-    print(" 🚀 使用 Google Gemini Banana 實景空照照片批量生成 100 張 960x10240 超長背景圖...")
+    print(" 🚀 使用 Google Gemini Banana 實景空照照片批量生成 100 張 1024x10240 超長背景圖...")
     print("==================================================")
 
     t_start = time.time()
@@ -184,32 +205,19 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(thumbs_dir, exist_ok=True)
 
-    print(f"\n▶ 開始生成 100 張 960x10240 立體實景長卷...")
+    print(f"\n▶ 開始多程序平行生成 100 張 1024x10240 立體實景長卷...")
 
-    for i in range(1, 101):
-        t0 = time.time()
-        theme = THEME_PALETTES[(i - 1) % len(THEME_PALETTES)]
-        long_img = build_single_960x10240_image(i, masters, theme)
+    tasks = [(i, masters, output_dir, thumbs_dir) for i in range(1, 101)]
+    cpu_count = min(16, os.cpu_count() or 4)
 
-        # 儲存原版高清 960x10240 JPEG
-        filename = f"scenic_ms_{i:03d}.jpg"
-        out_p = os.path.join(output_dir, filename)
-        long_img.save(out_p, quality=88, optimize=True)
-
-        # 同時生成方便快速瀏覽的預覽縮圖 (寬度 240, 高度 2560)
-        thumb_img = long_img.resize((240, 2560), Image.Resampling.BILINEAR)
-        thumb_p = os.path.join(thumbs_dir, f"thumb_ms_{i:03d}.jpg")
-        thumb_img.save(thumb_p, quality=82)
-
-        file_kb = os.path.getsize(out_p) / 1024.0
-        elapsed = time.time() - t0
-
-        if i % 10 == 0 or i == 1:
-            print(f"  ✓ [{i:03d}/100] {filename} | {theme['title']} | 960x10240 | {file_kb:.1f} KB | 耗時 {elapsed:.2f}s")
+    with multiprocessing.Pool(processes=cpu_count) as pool:
+        for i, filename, title, file_kb, elapsed in pool.imap(_worker_generate, tasks):
+            if i % 10 == 0 or i == 1:
+                print(f"  ✓ [{i:03d}/100] {filename} | {title} | 1024x10240 | {file_kb:.1f} KB | 耗時 {elapsed:.2f}s")
 
     total_time = time.time() - t_start
     print("==================================================")
-    print(f" 🎉 100 張 960x10240 Google Gemini Banana 立體實景有山有海頂視圖全部生成完畢！")
+    print(f" 🎉 100 張 1024x10240 Google Gemini Banana 立體實景有山有海頂視圖全部生成完畢！")
     print(f" 總耗時: {total_time:.2f} 秒，檔案存於: {output_dir}")
     print("==================================================")
 
