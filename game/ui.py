@@ -190,7 +190,7 @@ class UIManager:
         pwr_txt = self.font_small.render(f"PWR: LV.{player.power_level}", True, COLOR_GOLD)
         surf.blit(pwr_txt, (rx, by + 9))
 
-        cd_ratio = 1.0 - (player.special_timer / player.special_cooldown)
+        cd_ratio = 1.0 - (player.special_timer / max(0.001, player.special_cooldown))
         cd_ratio = max(0.0, min(1.0, cd_ratio))
         z_col = COLOR_CYAN if cd_ratio >= 1.0 else (120, 140, 160)
 
@@ -206,7 +206,7 @@ class UIManager:
             mb_w = 420
             mb_x = (w - mb_w) // 2
             mb_y = HUD_TOP_HEIGHT + 10
-            mb_ratio = max(0.0, midboss.hp / float(midboss.max_hp))
+            mb_ratio = max(0.0, midboss.hp / max(1.0, float(midboss.max_hp)))
 
             # 底板
             mb_panel = pygame.Surface((mb_w, 32), pygame.SRCALPHA)
@@ -226,7 +226,7 @@ class UIManager:
             bw = 480
             bx = (w - bw) // 2 + 30
             by_boss = HUD_TOP_HEIGHT + 14
-            b_ratio = max(0.0, boss.hp / boss.max_hp)
+            b_ratio = max(0.0, boss.hp / max(1.0, float(boss.max_hp)))
             phase_num = getattr(boss, 'current_phase', 1)
 
             # A. 穩定顯示敵艦外型戰術卡 (Stable Enemy Warship Tactical Display Frame)
@@ -465,7 +465,7 @@ class UIManager:
                 mb_w = 460
                 mb_x = (w - mb_w) // 2
                 mb_y = HUD_TOP_HEIGHT + 10
-                mb_ratio = max(0.0, midboss.hp / float(midboss.max_hp))
+                mb_ratio = max(0.0, midboss.hp / max(1.0, float(midboss.max_hp)))
 
                 mb_panel = pygame.Surface((mb_w, 32), pygame.SRCALPHA)
                 mb_panel.fill((15, 25, 40, 220))
@@ -488,7 +488,7 @@ class UIManager:
                 bw = 420
                 bx = 16 if b_idx == 0 else (w - bw - 16)
                 by_boss = HUD_TOP_HEIGHT + 14
-                b_ratio = max(0.0, b_obj.hp / float(b_obj.max_hp))
+                b_ratio = max(0.0, b_obj.hp / max(1.0, float(b_obj.max_hp)))
                 phase_num = getattr(b_obj, 'current_phase', 1)
 
                 # 縮圖外框
@@ -532,7 +532,7 @@ class UIManager:
             bw = 500
             bx = (w - bw) // 2 + 30
             by_boss = HUD_TOP_HEIGHT + 14
-            b_ratio = max(0.0, b_obj.hp / float(b_obj.max_hp))
+            b_ratio = max(0.0, b_obj.hp / max(1.0, float(b_obj.max_hp)))
             phase_num = getattr(b_obj, 'current_phase', 1)
 
             frame_w, frame_h = 76, 76
@@ -855,6 +855,25 @@ class UIManager:
         surf.blit(h1, h1.get_rect(center=(w // 2, SCREEN_HEIGHT - 45)))
         surf.blit(h2, h2.get_rect(center=(w // 2, SCREEN_HEIGHT - 18)))
 
+    def draw_paused(self, surf):
+        """戰術暫停遮罩介面"""
+        w = surf.get_width()
+        overlay = pygame.Surface((w, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((8, 14, 24, 175))
+        surf.blit(overlay, (0, 0))
+
+        box_w, box_h = 480, 180
+        box = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+        box.fill((16, 28, 48, 235))
+        pygame.draw.rect(box, COLOR_CYAN, (0, 0, box_w, box_h), 2, border_radius=10)
+        surf.blit(box, ((w - box_w) // 2, (SCREEN_HEIGHT - box_h) // 2))
+
+        title = self.font_large.render("PAUSED · 戰術暫停", True, COLOR_GOLD)
+        surf.blit(title, title.get_rect(center=(w // 2, SCREEN_HEIGHT // 2 - 30)))
+
+        hint = self.font_mid.render("按 [P] 繼續作戰    ·    按 [ESC] 離開遊戲", True, COLOR_WHITE)
+        surf.blit(hint, hint.get_rect(center=(w // 2, SCREEN_HEIGHT // 2 + 32)))
+
     def draw_game_over(self, surf, score, stage_num):
         """遊戲結束畫面"""
         w = surf.get_width()
@@ -871,10 +890,10 @@ class UIManager:
         sc_txt = self.font_mid.render(f"TOTAL SCORE: {score}", True, COLOR_GOLD)
         surf.blit(sc_txt, sc_txt.get_rect(center=(w // 2, SCREEN_HEIGHT // 2 + 20)))
 
-        prompt_y = self.font_small.render("【提示：若在雙人模式中生命用盡，可按 Y 鍵補滿 5 命立即復活！】", True, COLOR_YELLOW)
+        prompt_y = self.font_small.render("【提示：若生命用盡，亦可直接按 Y 鍵補滿 5 命立即原地復活！】", True, COLOR_YELLOW)
         surf.blit(prompt_y, prompt_y.get_rect(center=(w // 2, SCREEN_HEIGHT // 2 + 60)))
 
-        retry_txt = self.font_mid.render("PRESS [ENTER] TO RETRY  OR  [ESC] TO EXIT", True, COLOR_WHITE)
+        retry_txt = self.font_mid.render("PRESS [ENTER / SPACE] TO RETRY  OR  [ESC] TO EXIT", True, COLOR_WHITE)
         surf.blit(retry_txt, retry_txt.get_rect(center=(w // 2, SCREEN_HEIGHT // 2 + 105)))
 
     def draw_victory_all(self, surf, score):
@@ -893,5 +912,5 @@ class UIManager:
         sc_txt = self.font_mid.render(f"FINAL RECORD SCORE: {score}", True, COLOR_WHITE)
         surf.blit(sc_txt, sc_txt.get_rect(center=(w // 2, SCREEN_HEIGHT // 2 + 30)))
 
-        prompt = self.font_mid.render("PRESS [ENTER] TO PLAY AGAIN", True, COLOR_YELLOW)
+        prompt = self.font_mid.render("PRESS [ENTER / SPACE] TO PLAY AGAIN", True, COLOR_YELLOW)
         surf.blit(prompt, prompt.get_rect(center=(w // 2, SCREEN_HEIGHT // 2 + 100)))

@@ -895,7 +895,9 @@ def create_powerup_sprite(powerup_type, frame=0):
     pygame.draw.circle(surf, bg_col, (cx, cy), 12)
     pygame.draw.circle(surf, COLOR_WHITE, (cx, cy), 12, 1)
 
-    # 繪製字母
+    # 繪製字母 (確保字型子系統已初始化)
+    if not pygame.font.get_init():
+        pygame.font.init()
     font = pygame.font.Font(None, 22)
     txt = font.render(letter, True, COLOR_WHITE)
     trect = txt.get_rect(center=(cx, cy))
@@ -911,10 +913,17 @@ def create_bullet_sprite(b_type="player_vulcan", angle=0, player_id=1):
     1. 二人戰機射出的子彈顏色需不一樣 (P1 金藍光 vs P2 翠綠粉紫電)
     2. 子彈尺寸大小縮小為原本的二分之一 (1/2 size 精細化彈幕)
     """
-    key = f"bullet_{b_type}_{int(angle) % 360}_p{player_id}"
+    is_circular = b_type in ["enemy_bullet", "boss_heavy_bullet"]
+    norm_ang = 0 if is_circular else ((int(round(angle / 5.0)) * 5) % 360)
+    key = f"bullet_{b_type}_{norm_ang}_p{player_id}"
     cached = SpriteCache.get(key)
     if cached:
         return cached
+
+    if norm_ang != 0:
+        base_surf = create_bullet_sprite(b_type, 0, player_id=player_id)
+        rot_surf = pygame.transform.rotate(base_surf, norm_ang)
+        return SpriteCache.set(key, rot_surf)
 
     if b_type == "player_vulcan":
         # 尺寸縮小為二分之一 (6x12，原 12x24)

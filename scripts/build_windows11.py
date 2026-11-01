@@ -155,8 +155,12 @@ def generate_ico_file(ico_path):
 
 
 LAUNCHER_C_CODE = r"""
+#ifndef UNICODE
 #define UNICODE
+#endif
+#ifndef _UNICODE
 #define _UNICODE
+#endif
 #include <windows.h>
 #include <stdio.h>
 #include <wchar.h>
@@ -198,6 +202,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLin
     SetEnvironmentVariableW(L"PYGAME_HIDE_SUPPORT_PROMPT", L"1");
     SetEnvironmentVariableW(L"PYTHONUTF8", L"1");
     SetEnvironmentVariableW(L"SDL_VIDEO_CENTERED", L"1");
+    SetEnvironmentVariableW(L"SDL_IME_SHOW_UI", L"0");
 
     int console_mode = has_console_flag(lpCmdLine);
     if (console_mode) {
@@ -345,8 +350,46 @@ def compile_windows_exe(ico_path, output_exe_path):
     print(f"✓ 已編譯原生 Windows 11 64-bit 執行檔: {output_exe_path} ({os.path.getsize(output_exe_path)} bytes)")
 
 
+def ensure_cached_wheels():
+    """確保 Windows 64-bit Python Embeddable 與 Pygame/NumPy Wheels 已下載至快取目錄"""
+    import urllib.request
+    import json
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    py_url = "https://www.python.org/ftp/python/3.12.7/python-3.12.7-embed-amd64.zip"
+    py_dest = os.path.join(CACHE_DIR, "python-3.12.7-embed-amd64.zip")
+    if not os.path.exists(py_dest):
+        print(f"  -> 下載 {py_url} ...")
+        urllib.request.urlretrieve(py_url, py_dest)
+
+    for pkg in ["pygame", "numpy"]:
+        existing = [f for f in os.listdir(CACHE_DIR) if f.startswith(pkg + "-") and f.endswith(".whl")]
+        if existing:
+            continue
+        req = urllib.request.urlopen(f"https://pypi.org/pypi/{pkg}/json")
+        data = json.loads(req.read().decode("utf-8"))
+        matched = []
+        for v in reversed(list(data["releases"].keys())):
+            matched = [
+                u for u in data["releases"][v]
+                if "cp312" in u["filename"] and "win_amd64" in u["filename"] and u["filename"].endswith(".whl")
+            ]
+            if matched:
+                break
+        u = matched[0]
+        dest = os.path.join(CACHE_DIR, u["filename"])
+        print(f"  -> 下載 {u['filename']} ...")
+        urllib.request.urlretrieve(u["url"], dest)
+
+
 def build_embedded_runtime(runtime_dir):
     """解壓並配置 Windows 11 64-bit Python Embeddable + Pygame + NumPy"""
+    if os.path.exists(os.path.join(runtime_dir, "pythonw.exe")) and os.path.exists(
+        os.path.join(runtime_dir, "Lib", "site-packages", "pygame")
+    ):
+        print(f"✓ 偵測到既有 Windows 11 內嵌執行環境，直接沿用: {runtime_dir}")
+        return
+
+    ensure_cached_wheels()
     if os.path.exists(runtime_dir):
         shutil.rmtree(runtime_dir)
     os.makedirs(runtime_dir, exist_ok=True)

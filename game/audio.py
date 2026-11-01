@@ -25,6 +25,9 @@ class SoundManager:
     def get_instance(cls):
         if cls._instance is None:
             cls._instance = SoundManager()
+        elif cls._instance.enabled and not pygame.mixer.get_init():
+            cls._instance.bgm_playing = False
+            cls._instance._init_audio()
         return cls._instance
 
     def _init_audio(self):
@@ -37,6 +40,8 @@ class SoundManager:
                 self.sample_rate = init_info[0]
                 self.channels = init_info[2]
             pygame.mixer.set_num_channels(32)
+            # 保留第 0 聲道專供 BGM 使用，防止密集射擊/爆炸音效搶佔導致背景音樂中斷
+            pygame.mixer.set_reserved(1)
             self.bgm_channel = pygame.mixer.Channel(0)
             self.enabled = True
             self._generate_sounds()

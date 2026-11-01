@@ -37,12 +37,12 @@ class Particle:
     def draw(self, surf):
         if self.life <= 0:
             return
-        progress = max(0.0, min(1.0, self.life / self.max_life))
+        progress = max(0.0, min(1.0, self.life / max(0.001, self.max_life)))
         r = self.radius * progress if self.shrink else self.radius
         if r < 1:
             return
         # 繪製半透明火光粒子
-        alpha = int(255 * progress)
+        alpha = max(0, min(255, int(255 * progress)))
         c = self.color
         if len(c) == 3:
             col = (c[0], c[1], c[2], alpha)
@@ -70,14 +70,14 @@ class Shockwave:
         return self.timer < self.duration
 
     def draw(self, surf):
-        prog = self.timer / self.duration
+        prog = max(0.0, min(1.0, self.timer / max(0.001, self.duration)))
         r = int(self.max_radius * math.sqrt(prog))
-        alpha = int(255 * (1.0 - prog))
+        alpha = max(0, min(255, int(255 * (1.0 - prog))))
         if r < 2 or alpha <= 0:
             return
         c = self.color
         s = pygame.Surface((r * 2 + 4, r * 2 + 4), pygame.SRCALPHA)
-        pygame.draw.circle(s, (c[0], c[1], c[2], alpha), (r + 2, r + 2), r, self.width)
+        pygame.draw.circle(s, (c[0], c[1], c[2], alpha), (r + 2, r + 2), r, min(r, self.width))
         surf.blit(s, (int(self.x - r - 2), int(self.y - r - 2)))
 
 
@@ -188,8 +188,8 @@ class ParticleManager:
     def draw(self, surf):
         # 繪製殘影
         for af in self.afterimages:
-            prog = 1.0 - (af['timer'] / af['duration'])
-            alpha = int(af['max_alpha'] * prog)
+            prog = max(0.0, min(1.0, 1.0 - (af['timer'] / max(0.001, af['duration']))))
+            alpha = max(0, min(255, int(af['max_alpha'] * prog)))
             s = af['surf'].copy()
             s.set_alpha(alpha)
             surf.blit(s, (af['x'], af['y']))

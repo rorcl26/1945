@@ -7,15 +7,17 @@
 import math
 import random
 import pygame
-from game.config import SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_WHITE, COLOR_RED, COLOR_YELLOW, COLOR_GOLD, COLOR_ORANGE
+import game.config as cfg
+from game.config import SCREEN_HEIGHT, COLOR_WHITE, COLOR_RED, COLOR_YELLOW, COLOR_GOLD, COLOR_ORANGE
 from game.sprites import create_boss_sprite, create_warship_sprite, create_midboss_fighter_sprite
 from game.weapons import Bullet, PowerUp
 from game.audio import SoundManager
 
 class Boss:
-    def __init__(self, stage_info, boss_id=1, offset_x=0, screen_width=SCREEN_WIDTH):
+    def __init__(self, stage_info, boss_id=1, offset_x=0, screen_width=None):
         self.stage = stage_info["stage"]
         self.boss_id = boss_id
+        screen_width = cfg.SCREEN_WIDTH if screen_width is None else screen_width
         self.screen_width = screen_width
         self.name = stage_info["boss_name"] + (f" (一號機)" if boss_id == 1 and offset_x != 0 else (f" (二號機)" if boss_id == 2 else ""))
         self.title = stage_info["boss_title"]
@@ -114,7 +116,7 @@ class Boss:
         self.battle_time += dt
 
         # 受損時的機體濃煙與火花
-        if (self.hp / self.max_hp) < 0.5:
+        if (self.hp / max(1, self.max_hp)) < 0.5:
             if random.random() < 0.5:
                 ox = random.randint(-self.radius + 15, self.radius - 15)
                 self.smoke_particles.append({
@@ -158,12 +160,13 @@ class Boss:
         rate_mult = 1.3 if phase == 3 else (1.1 if phase == 2 else 1.0)
 
         if self.attack_timer <= 0:
+            safe_mult = max(0.1, self.bullet_mult)
             self.pattern_phase = (self.pattern_phase + 1) % 4
-            self.attack_timer = (1.2 / self.bullet_mult) / rate_mult
+            self.attack_timer = (1.2 / safe_mult) / rate_mult
 
             px, py = player_pos
             angle_to_player = math.atan2(py - self.y, px - self.x)
-            spd = 6.2 * self.bullet_mult
+            spd = 6.2 * safe_mult
 
             if self.pattern_phase == 0:
                 # 模式 1：多管重型主砲向玩家齊射
@@ -247,9 +250,10 @@ class Boss:
     def draw(self, surf):
         # 繪製受損時的機體黑煙與火光
         for p in self.smoke_particles:
-            s_surf = pygame.Surface((int(p['radius'] * 2), int(p['radius'] * 2)), pygame.SRCALPHA)
-            pygame.draw.circle(s_surf, (30, 30, 35, p['alpha']), (int(p['radius']), int(p['radius'])), int(p['radius']))
-            surf.blit(s_surf, (int(p['x'] - p['radius']), int(p['y'] - p['radius'])))
+            r = max(1, int(p['radius']))
+            s_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(s_surf, (30, 30, 35, max(0, min(255, int(p['alpha'])))), (r, r), r)
+            surf.blit(s_surf, (int(p['x'] - r), int(p['y'] - r)))
 
         spr = create_boss_sprite(self.boss_type, self.stage, self.frame // 3, form=self.current_phase)
 
@@ -276,27 +280,28 @@ class MidBoss:
     中型大魔王 (Mid-Boss)：
     【核心規則】：以船艦為主，且需在海面上出現，不要跑到陸地上，如遇到背景是陸地就停在該處就好！
     """
-    def __init__(self, stage_info, bg_mgr=None):
+    def __init__(self, stage_info, bg_mgr=None, screen_width=None):
         self.stage = stage_info["stage"]
         self.name = stage_info.get("midboss_name", "中型海面重巡洋艦")
         self.title = stage_info.get("midboss_title", "Mid-Boss Sky Fighter")
         self.boss_type = stage_info.get("midboss_type", "midboss_fighter")
         self.hp = stage_info.get("midboss_hp", 9000)
-        self.max_hp = self.hp
+        self.max_hp = max(1, self.hp)
         self.bullet_mult = stage_info.get("bullet_speed_mult", 1.0)
+        self.screen_width = screen_width if screen_width is not None else (bg_mgr.screen_width if bg_mgr else cfg.SCREEN_WIDTH)
 
         # 【核心規則】：每關的中途大魔王以空中戰機為主
         self.is_aerial = (self.boss_type == "midboss_fighter") or (self.boss_type not in ["cruiser", "battleship", "carrier"])
 
-        spawn_x = SCREEN_WIDTH // 2
+        spawn_x = self.screen_width // 2
         if not self.is_aerial and bg_mgr:
             # 尋找海面區域出生 (若為海軍艦艇)
-            for test_x in [SCREEN_WIDTH // 2, 280, 680, 220, 740, 320]:
+            for test_x in [self.screen_width // 2, 280, 680, 220, 740, 320]:
                 if not bg_mgr.is_land_position(test_x, 175):
                     spawn_x = test_x
                     break
         elif self.is_aerial:
-            spawn_x = random.randint(220, SCREEN_WIDTH - 220)
+            spawn_x = random.randint(220, max(220, self.screen_width - 220))
 
         self.x = spawn_x
         self.y = -110
@@ -347,9 +352,10 @@ class MidBoss:
         step_x = self.speed * self.move_dir * dt * 60
         next_x = self.x + step_x
 
+        cur_w = bg_mgr.screen_width if bg_mgr else self.screen_width
         if self.is_aerial:
             # 空中戰機高空超音速巡邏，不受地面/海面限制
-            if next_x > SCREEN_WIDTH - self.radius - 35:
+            if next_x > cur_w - self.radius - 35:
                 self.move_dir = -1
             elif next_x < self.radius + 35:
                 self.move_dir = 1
@@ -369,7 +375,7 @@ class MidBoss:
                     })
         else:
             # 海軍艦艇模式
-            if next_x > SCREEN_WIDTH - self.radius - 40:
+            if next_x > cur_w - self.radius - 40:
                 self.move_dir = -1
             elif next_x < self.radius + 40:
                 self.move_dir = 1
@@ -408,7 +414,7 @@ class MidBoss:
         self.wakes = [w for w in self.wakes if w['alpha'] > 0]
 
         # 受創黑煙
-        if (self.hp / self.max_hp) < 0.6 and random.random() < 0.4:
+        if (self.hp / max(1, self.max_hp)) < 0.6 and random.random() < 0.4:
             self.smoke_particles.append({
                 'x': self.x + random.randint(-25, 25),
                 'y': self.y - 15,
@@ -430,11 +436,12 @@ class MidBoss:
         bullets = []
         self.attack_timer -= dt
         if self.attack_timer <= 0:
+            safe_mult = max(0.1, self.bullet_mult)
             self.pattern_phase = (self.pattern_phase + 1) % 3
-            self.attack_timer = 1.0 / self.bullet_mult
+            self.attack_timer = 1.0 / safe_mult
             px, py = player_pos
             ang = math.atan2(py - self.y, px - self.x)
-            spd = 5.8 * self.bullet_mult
+            spd = 5.8 * safe_mult
 
             if self.pattern_phase == 0:
                 # 扇形 5 連發追蹤火網
@@ -487,20 +494,23 @@ class MidBoss:
         # 1. 噴射焰或水面浪花
         if self.is_aerial:
             for jp in self.jet_particles:
-                jp_surf = pygame.Surface((int(jp['radius'] * 2), int(jp['radius'] * 2)), pygame.SRCALPHA)
-                pygame.draw.circle(jp_surf, (*jp['color'], jp['alpha']), (int(jp['radius']), int(jp['radius'])), int(jp['radius']))
-                surf.blit(jp_surf, (int(jp['x'] - jp['radius']), int(jp['y'] - jp['radius'])))
+                r = max(1, int(jp['radius']))
+                jp_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+                pygame.draw.circle(jp_surf, (*jp['color'], max(0, min(255, int(jp['alpha'])))), (r, r), r)
+                surf.blit(jp_surf, (int(jp['x'] - r), int(jp['y'] - r)))
         else:
             for w in self.wakes:
-                w_surf = pygame.Surface((int(w['radius'] * 2), int(w['radius'] * 2)), pygame.SRCALPHA)
-                pygame.draw.circle(w_surf, (255, 255, 255, w['alpha']), (int(w['radius']), int(w['radius'])), int(w['radius']))
-                surf.blit(w_surf, (int(w['x'] - w['radius']), int(w['y'] - w['radius'])))
+                r = max(1, int(w['radius']))
+                w_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+                pygame.draw.circle(w_surf, (255, 255, 255, max(0, min(255, int(w['alpha'])))), (r, r), r)
+                surf.blit(w_surf, (int(w['x'] - r), int(w['y'] - r)))
 
         # 2. 繪製受損黑煙
         for p in self.smoke_particles:
-            s_surf = pygame.Surface((int(p['radius'] * 2), int(p['radius'] * 2)), pygame.SRCALPHA)
-            pygame.draw.circle(s_surf, (30, 30, 35, p['alpha']), (int(p['radius']), int(p['radius'])), int(p['radius']))
-            surf.blit(s_surf, (int(p['x'] - p['radius']), int(p['y'] - p['radius'])))
+            r = max(1, int(p['radius']))
+            s_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(s_surf, (30, 30, 35, max(0, min(255, int(p['alpha'])))), (r, r), r)
+            surf.blit(s_surf, (int(p['x'] - r), int(p['y'] - r)))
 
         # 3. 繪製中型大魔王精靈圖 (空中戰機 / 海軍戰艦)
         if self.is_aerial:

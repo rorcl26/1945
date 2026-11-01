@@ -140,6 +140,11 @@ class BackgroundManager:
 
         self.scenic_surfs = []
         self.scenic_surf = None
+        self._tint_cache = {}
+        self._glint_cache = {}
+        self._cloud_cache = {}
+        self._aurora_surf = None
+        self._flash_surf = None
         self._load_theme_surface()
 
     def set_screen_width(self, width):
@@ -211,7 +216,8 @@ class BackgroundManager:
 
     def _load_single_surface(self, filename):
         """載入單張立體實景頂視圖或超長縱向長卷 (支援 1024x10240、960x10240 與 960x1024)，並施加邊界無縫平滑處理"""
-        cache_key = (filename, self.screen_width)
+        has_display = pygame.display.get_surface() is not None
+        cache_key = (filename, self.screen_width, has_display)
         if cache_key in BackgroundManager._image_cache:
             return BackgroundManager._image_cache[cache_key]
 
@@ -226,6 +232,11 @@ class BackgroundManager:
                     target_h = orig_h if orig_h >= 10240 else int(orig_h * (self.screen_width / float(orig_w)))
                     scaled = pygame.transform.smoothscale(raw_surf, (self.screen_width, target_h))
                 seamless_surf = self._apply_seamless_loop(scaled)
+                if has_display:
+                    try:
+                        seamless_surf = seamless_surf.convert()
+                    except Exception:
+                        pass
                 BackgroundManager._image_cache[cache_key] = seamless_surf
                 return seamless_surf
             except Exception:
@@ -277,9 +288,10 @@ class BackgroundManager:
         self.scenic_surf = loaded_surfs[0]
 
     def _create_procedural_fallback_surface(self):
-        """備用高質感實景山海地形圖 (960x1024，保證上下端週期性無縫銜接，零拼接硬切)"""
+        """備用高質感實景山海地形圖 (依 self.screen_width 自適應，保證上下端週期性無縫銜接，零拼接硬切)"""
+        w = self.screen_width
         h = SCREEN_HEIGHT
-        surf = pygame.Surface((SCREEN_WIDTH, h))
+        surf = pygame.Surface((w, h))
         base_color = self.THEME_BASE_SEA.get(self.theme, (20, 55, 95))
 
         # 蔚藍至深海漸層 (使用正弦函數確保 y=0 與 y=h-1 完全銜接無縫)
@@ -291,7 +303,7 @@ class BackgroundManager:
             r = max(0, min(255, r))
             g = max(0, min(255, g))
             b = max(0, min(255, b))
-            pygame.draw.line(surf, (r, g, b), (0, y), (SCREEN_WIDTH, y))
+            pygame.draw.line(surf, (r, g, b), (0, y), (w, y))
 
         # 兩側防禦海岸地形與中央要塞島礁
         mountain_color = (45, 85, 55)
@@ -306,17 +318,17 @@ class BackgroundManager:
         pygame.draw.polygon(surf, sand_color, [(px + 10, py) for px, py in left_pts])
         pygame.draw.polygon(surf, mountain_color, left_pts)
 
-        # 2. 右側沿海群島陸地帶 (780 ~ 960)
-        right_pts = [(SCREEN_WIDTH, 0)]
+        # 2. 右側沿海群島陸地帶 (780 ~ self.screen_width)
+        right_pts = [(w, 0)]
         for y in range(0, h + 20, 20):
-            w_span = int(SCREEN_WIDTH - (115 + 35 * math.cos((y / float(h)) * 2.0 * math.pi * 2)))
+            w_span = int(w - (115 + 35 * math.cos((y / float(h)) * 2.0 * math.pi * 2)))
             right_pts.append((w_span, y))
-        right_pts.append((SCREEN_WIDTH, h))
+        right_pts.append((w, h))
         pygame.draw.polygon(surf, sand_color, [(px - 10, py) for px, py in right_pts])
         pygame.draw.polygon(surf, mountain_color, right_pts)
 
         # 3. 中央陸地陣地與島嶼走廊 (Middle Land: 380 ~ 580，供中間敵方戰車巡邏作戰)
-        mid_x = SCREEN_WIDTH // 2
+        mid_x = 480
         mid_pts_left = []
         mid_pts_right = []
         for y in range(0, h + 20, 20):
@@ -342,10 +354,11 @@ class BackgroundManager:
         陸地區域包含：
         1. 左側防禦海岸陣地: 0 <= x <= 180
         2. 中央島嶼要塞走廊 (Middle Land): 380 <= x <= 580
-        3. 右側防禦海岸陣地: 780 <= x <= SCREEN_WIDTH
+        3. 右側防禦海岸陣地: 780 <= x <= self.screen_width (相容 1P 960 與 2P 1024)
         """
         x_val = float(x)
-        if (0 <= x_val <= 180) or (380 <= x_val <= 580) or (780 <= x_val <= SCREEN_WIDTH):
+        max_land_x = max(SCREEN_WIDTH, self.screen_width)
+        if (0 <= x_val <= 180) or (380 <= x_val <= 580) or (780 <= x_val <= max_land_x):
             return True
         return False
 
@@ -392,9 +405,47 @@ class BackgroundManager:
             if self.lightning_alpha > 0:
                 self.lightning_alpha = max(0, self.lightning_alpha - int(850 * dt))
 
+    def _get_glint_sprite(self, alpha_bucket):
+        """取得快取之波光亮點微暈精靈，避免每幀建立全畫面 SRCALPHA Surface"""
+        if alpha_bucket not in self._glint_cache:
+            s = pygame.Surface((8, 8), pygame.SRCALPHA)
+            pygame.draw.circle(s, (255, 255, 255, alpha_bucket), (4, 4), 3)
+            self._glint_cache[alpha_bucket] = s
+        return self._glint_cache[alpha_bucket]
+
+    def _get_cloud_surfaces(self, cw, ch):
+        """取得快取之雲影與立體雲朵 Surface，避免每幀重複繪製橢圓"""
+        key = (self.theme, cw, ch)
+        if key not in self._cloud_cache:
+            cloud_cfg = self.THEME_CLOUD_TINT_MAP.get(self.theme, {
+                "cloud": (250, 250, 255), "shadow": (30, 45, 65), "alpha": 65
+            })
+            cloud_rgb = cloud_cfg["cloud"]
+            shadow_rgb = cloud_cfg["shadow"]
+            base_cloud_alpha = cloud_cfg["alpha"]
+
+            shadow_surf = pygame.Surface((cw, ch), pygame.SRCALPHA)
+            pygame.draw.ellipse(shadow_surf, (*shadow_rgb, 30), (0, 0, cw, ch))
+
+            cloud_surf = pygame.Surface((cw, ch), pygame.SRCALPHA)
+            pygame.draw.ellipse(cloud_surf, (*cloud_rgb, int(base_cloud_alpha * 0.6)), (0, 0, cw, ch))
+            pygame.draw.ellipse(cloud_surf, (*cloud_rgb, base_cloud_alpha),
+                                (int(cw * 0.1), int(ch * 0.1), int(cw * 0.8), int(ch * 0.8)))
+            core_alpha = min(255, base_cloud_alpha + 45)
+            pygame.draw.ellipse(
+                cloud_surf,
+                (min(255, cloud_rgb[0] + 15), min(255, cloud_rgb[1] + 15), min(255, cloud_rgb[2] + 15), core_alpha),
+                (int(cw * 0.22), int(ch * 0.18), int(cw * 0.56), int(ch * 0.64))
+            )
+            self._cloud_cache[key] = (shadow_surf, cloud_surf)
+        return self._cloud_cache[key]
+
     def draw(self, surf):
-        """繪製實景山脈海景與層次感豐富的多重視差 (徹底去除橫條紋)"""
-        # 1. 繪製連續無縫多段實景頂視底圖 (Part 1 + Part 2 多張同一情境平順連貫串接)
+        """繪製實景山脈海景與層次感豐富的多重視差 (徹底去除橫條紋，並以視窗裁切與快取大幅加速 Windows 11 渲染)"""
+        sw = surf.get_width()
+        sh = SCREEN_HEIGHT
+
+        # 1. 繪製連續無縫多段實景頂視底圖 (僅裁切繪製可見視窗範圍，杜絕 10240px 全圖重複 Blit 卡頓)
         if self.scenic_surfs:
             num_segs = len(self.scenic_surfs)
             seg_h = self.scenic_surfs[0].get_height()
@@ -404,78 +455,69 @@ class BackgroundManager:
             for cycle_offset in [-total_cycle_h, 0, total_cycle_h]:
                 for idx, seg_surf in enumerate(self.scenic_surfs):
                     y = scroll_pos + cycle_offset - idx * seg_h
-                    if -seg_h < y < SCREEN_HEIGHT:
-                        surf.blit(seg_surf, (0, y))
+                    if -seg_h < y < sh:
+                        src_y = max(0, -y)
+                        dst_y = max(0, y)
+                        vis_h = min(seg_h - src_y, sh - dst_y)
+                        if vis_h > 0:
+                            surf.blit(seg_surf, (0, dst_y), (0, src_y, seg_surf.get_width(), vis_h))
         elif self.scenic_surf:
             img_h = self.scenic_surf.get_height()
             offset_y = int(self.scroll_y_scenic) % img_h
-            surf.blit(self.scenic_surf, (0, offset_y - img_h))
-            surf.blit(self.scenic_surf, (0, offset_y))
-            if offset_y < SCREEN_HEIGHT:
-                surf.blit(self.scenic_surf, (0, offset_y + img_h))
+            for y in (offset_y - img_h, offset_y, offset_y + img_h):
+                if -img_h < y < sh:
+                    src_y = max(0, -y)
+                    dst_y = max(0, y)
+                    vis_h = min(img_h - src_y, sh - dst_y)
+                    if vis_h > 0:
+                        surf.blit(self.scenic_surf, (0, dst_y), (0, src_y, self.scenic_surf.get_width(), vis_h))
         else:
             surf.fill(self.THEME_BASE_SEA.get(self.theme, (15, 60, 105)))
 
-        # 2. 海洋微動柔和自然波光 (全面去除水平橫條紋，使用自然散射星芒亮點)
-        wave_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        # 2. 海洋微動柔和自然波光 (使用預快取微暈精靈，零每幀全螢幕 Surface 配置)
         for wg in self.wave_glints:
-            gy = (wg['y'] + self.scroll_y_waves * wg['speed']) % SCREEN_HEIGHT
+            gy = (wg['y'] + self.scroll_y_waves * wg['speed']) % sh
             gx = wg['x']
             pulse = 0.5 + 0.5 * math.sin(self.scroll_y_waves * 0.05 + wg['phase'])
             alpha = int(40 * pulse)
             if alpha > 5:
-                # 以圓形微暈光芒取代水平橫條線，絕無橫條紋干擾
-                pygame.draw.circle(wave_surf, (255, 255, 255, alpha), (int(gx), int(gy)), 3)
-        surf.blit(wave_surf, (0, 0))
+                bucket = min(40, max(8, (alpha // 8) * 8))
+                glint_spr = self._get_glint_sprite(bucket)
+                surf.blit(glint_spr, (int(gx) - 4, int(gy) - 4))
 
-        # 3. 關卡專屬大氣濾鏡色調 (Atmospheric Lighting Filter)
+        # 3. 關卡專屬大氣濾鏡色調 (快取濾鏡層)
         tint = self.THEME_TINT_MAP.get(self.theme, (255, 255, 255, 0))
         if tint[3] > 0:
-            tint_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            tint_overlay.fill(tint)
-            surf.blit(tint_overlay, (0, 0))
+            t_key = (self.theme, sw, sh)
+            if t_key not in self._tint_cache:
+                tint_overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
+                tint_overlay.fill(tint)
+                self._tint_cache[t_key] = tint_overlay
+            surf.blit(self._tint_cache[t_key], (0, 0))
 
-        # 4. 高空半透明浮雲層與地面柔和雲影 (與背景色調完美搭調，數量精簡為 3 朵)
-        cloud_cfg = self.THEME_CLOUD_TINT_MAP.get(self.theme, {
-            "cloud": (250, 250, 255), "shadow": (30, 45, 65), "alpha": 65
-        })
-        cloud_rgb = cloud_cfg["cloud"]
-        shadow_rgb = cloud_cfg["shadow"]
-        base_cloud_alpha = cloud_cfg["alpha"]
-
+        # 4. 高空半透明浮雲層與地面柔和雲影 (使用預渲染快取雲朵，數量精簡為 3 朵)
         for c in self.clouds:
-            cy = (c['y'] + self.scroll_y_clouds * c['speed']) % (SCREEN_HEIGHT + 350) - 170
-            cx = c['x']
+            cy = int((c['y'] + self.scroll_y_clouds * c['speed']) % (sh + 350) - 170)
+            cx = int(c['x'])
             cw, ch = c['width'], c['height']
-
-            # 地面柔和半透明雲影 (柔美貼合地形，不顯生硬)
-            shadow_surf = pygame.Surface((cw, ch), pygame.SRCALPHA)
-            pygame.draw.ellipse(shadow_surf, (*shadow_rgb, 30), (0, 0, cw, ch))
+            shadow_surf, cloud_surf = self._get_cloud_surfaces(cw, ch)
             surf.blit(shadow_surf, (cx + 35, cy + 50))
-
-            # 主雲朵體：羽化立體層疊
-            cloud_surf = pygame.Surface((cw, ch), pygame.SRCALPHA)
-            # 外層薄氣溶膠霧暈
-            pygame.draw.ellipse(cloud_surf, (*cloud_rgb, int(base_cloud_alpha * 0.6)), (0, 0, cw, ch))
-            # 次外層
-            pygame.draw.ellipse(cloud_surf, (*cloud_rgb, base_cloud_alpha),
-                                (int(cw * 0.1), int(ch * 0.1), int(cw * 0.8), int(ch * 0.8)))
-            # 核心亮光雲朵
-            core_alpha = min(255, base_cloud_alpha + 45)
-            pygame.draw.ellipse(cloud_surf, (min(255, cloud_rgb[0] + 15), min(255, cloud_rgb[1] + 15), min(255, cloud_rgb[2] + 15), core_alpha),
-                                (int(cw * 0.22), int(ch * 0.18), int(cw * 0.56), int(ch * 0.64)))
             surf.blit(cloud_surf, (cx, cy))
 
         # 5. 極光 / 雷暴閃光特殊層
         if self.theme == "aurora":
-            aurora_surf = pygame.Surface((SCREEN_WIDTH, 240), pygame.SRCALPHA)
-            for x in range(0, SCREEN_WIDTH, 16):
+            if self._aurora_surf is None or self._aurora_surf.get_width() != sw:
+                self._aurora_surf = pygame.Surface((sw, 240), pygame.SRCALPHA)
+            else:
+                self._aurora_surf.fill((0, 0, 0, 0))
+            for x in range(0, sw, 16):
                 ah = int(80 + 50 * math.sin((x + self.scroll_y_scenic) * 0.025))
-                pygame.draw.line(aurora_surf, (60, 250, 170, 50), (x, 0), (x, ah), 14)
-                pygame.draw.line(aurora_surf, (140, 255, 220, 30), (x + 8, 0), (x + 8, ah - 20), 10)
-            surf.blit(aurora_surf, (0, 0))
+                pygame.draw.line(self._aurora_surf, (60, 250, 170, 50), (x, 0), (x, ah), 14)
+                pygame.draw.line(self._aurora_surf, (140, 255, 220, 30), (x + 8, 0), (x + 8, ah - 20), 10)
+            surf.blit(self._aurora_surf, (0, 0))
 
         if self.lightning_alpha > 0:
-            flash = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            flash.fill((235, 245, 255, self.lightning_alpha))
-            surf.blit(flash, (0, 0))
+            if self._flash_surf is None or self._flash_surf.get_size() != (sw, sh):
+                self._flash_surf = pygame.Surface((sw, sh), pygame.SRCALPHA)
+            self._flash_surf.fill((235, 245, 255, self.lightning_alpha))
+            surf.blit(self._flash_surf, (0, 0))

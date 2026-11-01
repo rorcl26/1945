@@ -86,27 +86,27 @@ def generate_segment_slice(master_img, target_w, target_h, seed):
     cy = rnd.randint(0, max(0, mh - ch))
     cropped = master_img.crop((cx, cy, cx + cw, cy + ch))
 
-    # 幾何翻轉
+    # 幾何翻轉 (相容 Pillow 10+ Image.Transpose 列舉與舊版常數)
+    transpose_ops = getattr(Image, "Transpose", Image)
     if rnd.random() < 0.5:
-        cropped = cropped.transpose(Image.FLIP_LEFT_RIGHT)
+        cropped = cropped.transpose(transpose_ops.FLIP_LEFT_RIGHT)
     if rnd.random() < 0.5:
-        cropped = cropped.transpose(Image.FLIP_TOP_BOTTOM)
+        cropped = cropped.transpose(transpose_ops.FLIP_TOP_BOTTOM)
 
     # 旋轉 (90度步進)
     rot_times = rnd.choice([0, 1, 2, 3])
     for _ in range(rot_times):
-        cropped = cropped.transpose(Image.ROTATE_90)
+        cropped = cropped.transpose(transpose_ops.ROTATE_90)
 
     # 雙三次採樣至目標尺寸
-    return cropped.resize((target_w, target_h), Image.Resampling.BICUBIC)
+    resampling_ops = getattr(Image, "Resampling", Image)
+    return cropped.resize((target_w, target_h), resampling_ops.BICUBIC)
 
 def build_single_1024x10240_image(img_idx, masters, theme):
     """
     自真實 Google Gemini Banana 空照母盤合成一張完整的 1024x10240 超長無縫航道頂視圖。
     10 段連續平滑餘弦融接，上下兩端首尾銜接。
     """
-    rnd = random.Random(7777 + img_idx * 131)
-    
     # 預備畫布陣列 (10240, 1024, 3)
     canvas = np.zeros((TARGET_HEIGHT, TARGET_WIDTH, 3), dtype=np.float32)
 

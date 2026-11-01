@@ -8,8 +8,9 @@
 import math
 import random
 import pygame
+import game.config as cfg
 from game.config import (
-    SCREEN_WIDTH, SCREEN_HEIGHT, MAX_LIVES, MAX_HP, DAMAGE_PER_HIT,
+    SCREEN_HEIGHT, MAX_LIVES, MAX_HP, DAMAGE_PER_HIT,
     RESPAWN_INVULNERABLE_TIME, COLOR_WHITE, COLOR_SHIELD, COLOR_CYAN,
     FIGHTER_TYPES, HUD_TOP_HEIGHT, HUD_BOTTOM_HEIGHT
 )
@@ -18,7 +19,7 @@ from game.weapons import Bullet, HomingMissile, HomingLaser
 from game.audio import SoundManager
 
 class Player:
-    def __init__(self, fighter_config, player_id=1, screen_width=SCREEN_WIDTH):
+    def __init__(self, fighter_config, player_id=1, screen_width=None):
         self.config = fighter_config
         self.fighter_id = fighter_config["id"]
         self.name = fighter_config["name"]
@@ -27,7 +28,7 @@ class Player:
         self.weapon_type = fighter_config["weapon_type"]
         self.has_laser = False  # 吃到 L 寶物後解鎖全自動追蹤雷射
         self.player_id = player_id
-        self.screen_width = screen_width
+        self.screen_width = cfg.SCREEN_WIDTH if screen_width is None else screen_width
 
         # 生命力與防禦核心規則 (嚴格滿足題目要求)
         self.lives = MAX_LIVES           # 每次遊戲具有五次完整的生命力 (5條命)
@@ -209,13 +210,13 @@ class Player:
                 return False
 
         if self.player_id == 1:
-            if is_down(pygame.K_LEFT) or (not is_2p and is_down(pygame.K_a)):
+            if is_down(pygame.K_LEFT) or is_down(pygame.K_KP4) or (not is_2p and is_down(pygame.K_a)):
                 dx -= 1
-            if is_down(pygame.K_RIGHT) or (not is_2p and is_down(pygame.K_d)):
+            if is_down(pygame.K_RIGHT) or is_down(pygame.K_KP6) or (not is_2p and is_down(pygame.K_d)):
                 dx += 1
-            if is_down(pygame.K_UP) or (not is_2p and is_down(pygame.K_w)):
+            if is_down(pygame.K_UP) or is_down(pygame.K_KP8) or (not is_2p and is_down(pygame.K_w)):
                 dy -= 1
-            if is_down(pygame.K_DOWN) or (not is_2p and is_down(pygame.K_s)):
+            if is_down(pygame.K_DOWN) or is_down(pygame.K_KP2) or (not is_2p and (is_down(pygame.K_s) or is_down(pygame.K_x))):
                 dy += 1
         else:
             # P2: WXAD (W=上, X/S=下, A=左, D=右)
@@ -266,9 +267,15 @@ class Player:
                 return False
 
         if self.player_id == 1:
-            return is_down(pygame.K_m) or (not is_2p and is_down(pygame.K_SPACE))
+            return (
+                is_down(pygame.K_m)
+                or is_down(pygame.K_j)
+                or is_down(pygame.K_RCTRL)
+                or is_down(pygame.K_KP0)
+                or (not is_2p and (is_down(pygame.K_SPACE) or is_down(pygame.K_LCTRL)))
+            )
         else:
-            return is_down(pygame.K_v)
+            return is_down(pygame.K_v) or is_down(pygame.K_b) or is_down(pygame.K_LCTRL)
 
     def shoot(self, target_enemy=None):
         """
@@ -398,7 +405,7 @@ class Player:
             self.special_active_timer -= dt
             if self.special_type == "roll":
                 # 360 度急速迴轉動畫
-                prog = 1.0 - (self.special_active_timer / self.special_duration)
+                prog = 1.0 - (self.special_active_timer / max(0.001, self.special_duration))
                 self.roll_angle = prog * 360.0
 
             if self.special_active_timer <= 0:
@@ -407,6 +414,8 @@ class Player:
                 self.roll_angle = 0.0
 
         # 邊界保護 (戰機活動空域獨立於上下 HUD 切割列，絕不遮擋)
+        margin_x = 48 if self.formation_units >= 2 else 32
+        self.x = max(margin_x, min(self.screen_width - margin_x, self.x))
         min_y = HUD_TOP_HEIGHT + 26
         max_y = SCREEN_HEIGHT - HUD_BOTTOM_HEIGHT - 26
         self.y = max(min_y, min(max_y, self.y))

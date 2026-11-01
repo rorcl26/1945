@@ -7,17 +7,18 @@
 import math
 import random
 import pygame
-from game.config import SCREEN_WIDTH, SCREEN_HEIGHT
+import game.config as cfg
+from game.config import SCREEN_HEIGHT
 from game.sprites import create_enemy_sprite, create_tank_sprite
 from game.weapons import Bullet, PowerUp
 from game.audio import SoundManager
 
 class Enemy:
-    def __init__(self, x, y, enemy_type="scout_zero", hp=None, pattern="straight", speed=3.0, bullet_mult=1.0, spawn_from_bottom=False, spawn_direction=None, screen_width=SCREEN_WIDTH):
+    def __init__(self, x, y, enemy_type="scout_zero", hp=None, pattern="straight", speed=3.0, bullet_mult=1.0, spawn_from_bottom=False, spawn_direction=None, screen_width=None):
         self.x = x
         self.y = y
         self.enemy_type = enemy_type
-        self.screen_width = screen_width
+        self.screen_width = cfg.SCREEN_WIDTH if screen_width is None else screen_width
 
         # 【核心規則】：敵方可由上下左右出現 (top, bottom, left, right)
         if spawn_direction is None:
@@ -235,14 +236,15 @@ class Enemy:
             return []
 
         # 重設射擊週期
+        safe_mult = max(0.1, self.bullet_mult)
         if self.enemy_type == "scout_zero":
-            self.fire_timer = random.uniform(1.8, 3.0) / self.bullet_mult
+            self.fire_timer = random.uniform(1.8, 3.0) / safe_mult
         elif self.enemy_type == "fast_interceptor":
-            self.fire_timer = random.uniform(1.4, 2.4) / self.bullet_mult
+            self.fire_timer = random.uniform(1.4, 2.4) / safe_mult
         elif self.enemy_type == "twin_bomber":
-            self.fire_timer = random.uniform(1.6, 2.5) / self.bullet_mult
+            self.fire_timer = random.uniform(1.6, 2.5) / safe_mult
         else:
-            self.fire_timer = random.uniform(1.5, 2.2) / self.bullet_mult
+            self.fire_timer = random.uniform(1.5, 2.2) / safe_mult
 
         bullets = []
         px, py = player_pos
@@ -293,9 +295,10 @@ class Enemy:
 
         # 繪製受損時的引擎黑煙粒子
         for p in self.smoke_particles:
-            s_surf = pygame.Surface((int(p['radius'] * 2), int(p['radius'] * 2)), pygame.SRCALPHA)
-            pygame.draw.circle(s_surf, (40, 40, 45, p['alpha']), (int(p['radius']), int(p['radius'])), int(p['radius']))
-            surf.blit(s_surf, (int(p['x'] - p['radius']), int(p['y'] - p['radius'])))
+            r = max(1, int(p['radius']))
+            s_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(s_surf, (40, 40, 45, max(0, min(255, int(p['alpha'])))), (r, r), r)
+            surf.blit(s_surf, (int(p['x'] - r), int(p['y'] - r)))
 
         spr = create_enemy_sprite(self.enemy_type, self.frame // 3)
 
@@ -323,13 +326,14 @@ class EnemyTank:
     敵方地面裝甲戰車 (Enemy Ground Armored Tank)
     偶而在陸地海岸線上出現，具備活動履帶與可 360 度鎖定玩家的旋轉砲塔，向我方開火重型加農加榴砲彈
     """
-    def __init__(self, x, y, hp=55, speed=1.1, bullet_mult=1.0):
+    def __init__(self, x, y, hp=55, speed=1.1, bullet_mult=1.0, screen_width=None):
         self.x = x
         self.y = y
         self.hp = hp
         self.max_hp = hp
         self.speed = speed
         self.bullet_mult = bullet_mult
+        self.screen_width = cfg.SCREEN_WIDTH if screen_width is None else screen_width
         self.alive = True
         self.is_tank = True
         self.enemy_type = "ground_tank"
@@ -402,8 +406,9 @@ class EnemyTank:
             p['alpha'] = max(0, p['alpha'] - int(320 * dt))
         self.smoke_particles = [p for p in self.smoke_particles if p['alpha'] > 0]
 
-        # 超出螢幕邊界刪除
-        if self.y > SCREEN_HEIGHT + 60 or self.x < -60 or self.x > SCREEN_WIDTH + 60:
+        # 超出螢幕邊界刪除 (相容 1P 960 與 2P 1024 寬度)
+        max_w = max(self.screen_width, cfg.SCREEN_WIDTH)
+        if self.y > SCREEN_HEIGHT + 60 or self.x < -60 or self.x > max_w + 60:
             self.alive = False
 
     def check_shoot(self, dt, player_pos):
@@ -421,9 +426,10 @@ class EnemyTank:
         if self.fire_timer > 0:
             return []
 
-        self.fire_timer = random.uniform(1.8, 3.0) / self.bullet_mult
+        safe_mult = max(0.1, self.bullet_mult)
+        self.fire_timer = random.uniform(1.8, 3.0) / safe_mult
         ang = math.atan2(py - self.y, px - self.x)
-        spd = 5.2 * self.bullet_mult
+        spd = 5.2 * safe_mult
 
         # 加農砲口發射點
         turret_rad = math.radians(self.turret_angle)
@@ -456,15 +462,17 @@ class EnemyTank:
 
         # 1. 履帶揚塵
         for p in self.dust_particles:
-            d_surf = pygame.Surface((int(p['radius'] * 2), int(p['radius'] * 2)), pygame.SRCALPHA)
-            pygame.draw.circle(d_surf, (140, 125, 95, p['alpha']), (int(p['radius']), int(p['radius'])), int(p['radius']))
-            surf.blit(d_surf, (int(p['x'] - p['radius']), int(p['y'] - p['radius'])))
+            r = max(1, int(p['radius']))
+            d_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(d_surf, (140, 125, 95, max(0, min(255, int(p['alpha'])))), (r, r), r)
+            surf.blit(d_surf, (int(p['x'] - r), int(p['y'] - r)))
 
         # 2. 受損黑煙
         for p in self.smoke_particles:
-            s_surf = pygame.Surface((int(p['radius'] * 2), int(p['radius'] * 2)), pygame.SRCALPHA)
-            pygame.draw.circle(s_surf, (40, 40, 45, p['alpha']), (int(p['radius']), int(p['radius'])), int(p['radius']))
-            surf.blit(s_surf, (int(p['x'] - p['radius']), int(p['y'] - p['radius'])))
+            r = max(1, int(p['radius']))
+            s_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(s_surf, (40, 40, 45, max(0, min(255, int(p['alpha'])))), (r, r), r)
+            surf.blit(s_surf, (int(p['x'] - r), int(p['y'] - r)))
 
         # 3. 戰車精靈圖 (旋轉砲塔與動態履帶)
         spr = create_tank_sprite(self.turret_angle, self.frame // 3)

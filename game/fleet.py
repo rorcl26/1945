@@ -170,13 +170,14 @@ class FleetShip:
 
         self.fire_timer -= dt
         if self.fire_timer <= 0:
+            safe_mult = max(0.1, self.bullet_mult)
             px, py = player_pos
             ang = math.atan2(py - self.y, px - self.x)
-            spd = 5.2 * self.bullet_mult
+            spd = 5.2 * safe_mult
 
             if self.ship_type in ["battleship", "dreadnought"]:
                 # 重型戰列艦 / 超重無畏艦：3~4 連裝重型主砲齊射
-                self.fire_timer = random.uniform(1.8, 2.8) / self.bullet_mult
+                self.fire_timer = random.uniform(1.8, 2.8) / safe_mult
                 spreads = [-0.28, -0.1, 0.1, 0.28] if self.ship_type == "dreadnought" else [-0.22, 0.0, 0.22]
                 for spread in spreads:
                     rad = ang + spread
@@ -185,27 +186,27 @@ class FleetShip:
 
             elif self.ship_type == "carrier":
                 # 航空母艦：防空機槍與高角砲齊射
-                self.fire_timer = random.uniform(2.0, 3.2) / self.bullet_mult
+                self.fire_timer = random.uniform(2.0, 3.2) / safe_mult
                 for ox in [-25, 25]:
                     bullets.append(Bullet(self.x + ox, self.y + 10, math.cos(ang) * spd, math.sin(ang) * spd,
                                           "enemy_bullet", is_player=False))
 
             elif self.ship_type == "cruiser":
                 # 巡洋艦：快速雙聯裝艦砲齊射
-                self.fire_timer = random.uniform(1.4, 2.2) / self.bullet_mult
+                self.fire_timer = random.uniform(1.4, 2.2) / safe_mult
                 for ox in [-12, 12]:
                     bullets.append(Bullet(self.x + ox, self.y + 15, math.cos(ang) * (spd + 0.6), math.sin(ang) * (spd + 0.6),
                                           "enemy_bullet", is_player=False))
 
             elif self.ship_type == "patrol_boat":
                 # 巡邏快艇：高速靈動速射
-                self.fire_timer = random.uniform(0.9, 1.4) / self.bullet_mult
+                self.fire_timer = random.uniform(0.9, 1.4) / safe_mult
                 bullets.append(Bullet(self.x, self.y + 8, math.cos(ang) * (spd + 1.2), math.sin(ang) * (spd + 1.2),
                                       "enemy_bullet", is_player=False))
 
             else:  # gunboat
                 # 砲艇：突擊速射
-                self.fire_timer = random.uniform(1.2, 1.8) / self.bullet_mult
+                self.fire_timer = random.uniform(1.2, 1.8) / safe_mult
                 bullets.append(Bullet(self.x, self.y + 10, math.cos(ang) * (spd + 1.0), math.sin(ang) * (spd + 1.0),
                                       "enemy_bullet", is_player=False))
 
@@ -264,9 +265,10 @@ class FleetShip:
     def draw(self, surf):
         # 1. 繪製船體尾部湧浪與白色航跡水花
         for w in self.wakes:
-            w_surf = pygame.Surface((int(w['radius'] * 2), int(w['radius'] * 2)), pygame.SRCALPHA)
-            pygame.draw.circle(w_surf, (255, 255, 255, w['alpha']), (int(w['radius']), int(w['radius'])), int(w['radius']))
-            surf.blit(w_surf, (int(w['x'] - w['radius']), int(w['y'] - w['radius'])))
+            r = max(1, int(w['radius']))
+            w_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(w_surf, (255, 255, 255, max(0, min(255, int(w['alpha'])))), (r, r), r)
+            surf.blit(w_surf, (int(w['x'] - r), int(w['y'] - r)))
 
         # 2. 繪製事先完成好之精緻多彩軍艦精靈圖 (Pre-rendered Exquisite & Colorful Naval Warship Sprite)
         cx, cy = int(self.x), int(self.y)
@@ -288,9 +290,10 @@ class FleetShip:
 
         # 3. 繪製受損冒煙
         for p in self.smoke_particles:
-            s_surf = pygame.Surface((int(p['radius'] * 2), int(p['radius'] * 2)), pygame.SRCALPHA)
-            pygame.draw.circle(s_surf, (35, 35, 40, p['alpha']), (int(p['radius']), int(p['radius'])), int(p['radius']))
-            surf.blit(s_surf, (int(p['x'] - p['radius']), int(p['y'] - p['radius'])))
+            r = max(1, int(p['radius']))
+            s_surf = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(s_surf, (35, 35, 40, max(0, min(255, int(p['alpha'])))), (r, r), r)
+            surf.blit(s_surf, (int(p['x'] - r), int(p['y'] - r)))
 
 
 class NavalFleetManager:
@@ -413,12 +416,13 @@ class NavalFleetManager:
     def draw_warning(self, surf):
         """繪製敵艦隊接近警報橫幅"""
         if self.warning_active and int(self.warning_timer * 4) % 2 == 0:
-            bar = pygame.Surface((SCREEN_WIDTH, 60), pygame.SRCALPHA)
+            w = surf.get_width()
+            bar = pygame.Surface((w, 60), pygame.SRCALPHA)
             bar.fill((180, 80, 20, 180))
             surf.blit(bar, (0, 180))
 
             from game.ui import get_font
             font = get_font(28)
             txt = font.render("! ! 警告：敵方海上主力艦隊接近中 ! !", True, COLOR_YELLOW)
-            rect = txt.get_rect(center=(SCREEN_WIDTH // 2, 210))
+            rect = txt.get_rect(center=(w // 2, 210))
             surf.blit(txt, rect)

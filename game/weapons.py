@@ -7,7 +7,8 @@
 import math
 import random
 import pygame
-from game.config import SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_YELLOW, COLOR_CYAN
+import game.config as cfg
+from game.config import SCREEN_HEIGHT, COLOR_YELLOW, COLOR_CYAN
 from game.sprites import create_bullet_sprite, create_powerup_sprite
 
 class Bullet:
@@ -38,8 +39,8 @@ class Bullet:
         self.y += self.vy * dt * 60
         self.rect.center = (int(self.x), int(self.y))
 
-        # 移出螢幕外銷毀
-        if (self.x < -30 or self.x > SCREEN_WIDTH + 30 or
+        # 移出螢幕外銷毀 (動態讀取 cfg.SCREEN_WIDTH 以支援 1P 960 與 2P 1024 模式)
+        if (self.x < -30 or self.x > cfg.SCREEN_WIDTH + 30 or
             self.y < -40 or self.y > SCREEN_HEIGHT + 40):
             self.alive = False
 
@@ -59,7 +60,7 @@ class HomingMissile(Bullet):
 
     def update(self, dt):
         # 尋找或更新目標
-        if self.target and getattr(self.target, 'alive', False):
+        if self.target and getattr(self.target, 'alive', False) and not getattr(self.target, 'is_sinking', False):
             tx, ty = self.target.x, self.target.y
             desired_angle = math.atan2(ty - self.y, tx - self.x)
             # 漸進平滑轉向
@@ -68,14 +69,18 @@ class HomingMissile(Bullet):
             self.vx = math.cos(self.angle) * self.speed
             self.vy = math.sin(self.angle) * self.speed
         else:
-            # 原方向持續加速前進
-            self.vy = -self.speed
+            # 目標消失時平滑收斂橫向速度並維持等速向上推進
+            self.vx *= 0.90
+            self.vy = -math.sqrt(max(1.0, self.speed * self.speed - self.vx * self.vx))
+            self.angle = math.atan2(self.vy, self.vx)
 
+        spr_angle = math.degrees(math.atan2(-self.vy, self.vx)) - 90
+        self.sprite = create_bullet_sprite("player_missile", spr_angle, player_id=self.player_id)
         self.x += self.vx * dt * 60
         self.y += self.vy * dt * 60
-        self.rect.center = (int(self.x), int(self.y))
+        self.rect = self.sprite.get_rect(center=(int(self.x), int(self.y)))
 
-        if (self.x < -30 or self.x > SCREEN_WIDTH + 30 or
+        if (self.x < -30 or self.x > cfg.SCREEN_WIDTH + 30 or
             self.y < -40 or self.y > SCREEN_HEIGHT + 40):
             self.alive = False
 
@@ -104,18 +109,22 @@ class HomingLaser(Bullet):
             self.vx = math.cos(self.angle) * self.speed
             self.vy = math.sin(self.angle) * self.speed
         else:
-            self.vy = -self.speed
+            self.vx *= 0.90
+            self.vy = -math.sqrt(max(1.0, self.speed * self.speed - self.vx * self.vx))
+            self.angle = math.atan2(self.vy, self.vx)
 
+        spr_angle = math.degrees(math.atan2(-self.vy, self.vx)) - 90
+        self.sprite = create_bullet_sprite("player_homing_laser", spr_angle, player_id=self.player_id)
         self.x += self.vx * dt * 60
         self.y += self.vy * dt * 60
-        self.rect.center = (int(self.x), int(self.y))
+        self.rect = self.sprite.get_rect(center=(int(self.x), int(self.y)))
 
         # 更新雷射能量光痕
         self.trail.append((int(self.x), int(self.y)))
         if len(self.trail) > 5:
             self.trail.pop(0)
 
-        if (self.x < -40 or self.x > SCREEN_WIDTH + 40 or
+        if (self.x < -40 or self.x > cfg.SCREEN_WIDTH + 40 or
             self.y < -50 or self.y > SCREEN_HEIGHT + 50):
             self.alive = False
 
@@ -146,21 +155,27 @@ class PowerUp:
 
     def update(self, dt, player_pos=None):
         self.frame += 1
-        # 當玩家靠近時產生磁吸效果 (自動吸附戰果)
+        # 當玩家靠近時產生磁吸效果 (自動吸附戰果，防止 dist == 0 除以零錯誤)
         if player_pos:
             px, py = player_pos
             dist = math.hypot(px - self.x, py - self.y)
-            if dist < 160:
+            if 1e-4 < dist < 160:
                 self.vx += ((px - self.x) / dist) * 0.4
                 self.vy += ((py - self.y) / dist) * 0.4
 
         self.x += self.vx * dt * 60
         self.y += self.vy * dt * 60
-        self.rect.center = (int(self.x), int(self.y))
 
-        # 碰觸螢幕左右邊界彈跳
-        if self.x < 20 or self.x > SCREEN_WIDTH - 20:
-            self.vx = -self.vx
+        # 碰觸螢幕左右邊界彈跳並夾住座標，避免卡在牆邊反覆震盪
+        max_x = cfg.SCREEN_WIDTH - 20
+        if self.x < 20:
+            self.x = 20
+            self.vx = abs(self.vx)
+        elif self.x > max_x:
+            self.x = max_x
+            self.vx = -abs(self.vx)
+
+        self.rect.center = (int(self.x), int(self.y))
 
         if self.y > SCREEN_HEIGHT + 40:
             self.alive = False
