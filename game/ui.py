@@ -14,21 +14,38 @@ from game.config import (
 from game.sprites import create_player_sprite
 
 import os
+import sys
 
 _CACHED_FONT_PATH = None
 
 def get_font(size):
     global _CACHED_FONT_PATH
     if _CACHED_FONT_PATH is None:
-        candidates = [
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        meipass = getattr(sys, "_MEIPASS", None)
+        win_dir = os.environ.get("WINDIR", r"C:\Windows")
+        win_fonts = os.path.join(win_dir, "Fonts")
+
+        candidates = []
+        if meipass:
+            candidates.append(os.path.join(meipass, "assets", "fonts", "wqy-microhei.ttc"))
+        candidates.extend([
+            os.path.join(root_dir, "assets", "fonts", "wqy-microhei.ttc"),
+            os.path.join(os.getcwd(), "assets", "fonts", "wqy-microhei.ttc"),
             "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
             "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
             "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            os.path.join(win_fonts, "msjhbd.ttc"),
+            os.path.join(win_fonts, "msjh.ttc"),
+            os.path.join(win_fonts, "msyhbd.ttc"),
+            os.path.join(win_fonts, "msyh.ttc"),
+            os.path.join(win_fonts, "mingliu.ttc"),
+            os.path.join(win_fonts, "simhei.ttf"),
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        ]
+        ])
         for p in candidates:
-            if os.path.exists(p):
+            if p and os.path.exists(p):
                 _CACHED_FONT_PATH = p
                 break
         if _CACHED_FONT_PATH is None:

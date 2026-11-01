@@ -8,6 +8,7 @@
 """
 
 import os
+import sys
 import math
 import random
 import pygame
@@ -152,13 +153,19 @@ class BackgroundManager:
             self._load_theme_surface()
 
     def _get_asset_path(self, filename):
-        """解析資源路徑，相容本機開發、Docker 容器與專案子目錄 (含 100 張山海實景庫)"""
-        base_dirs = [
+        """解析資源路徑，相容本機開發、Windows 11 執行檔、Docker 容器與專案子目錄 (含 100 張山海實景庫)"""
+        base_dirs = []
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            base_dirs.append(os.path.join(meipass, "assets", "backgrounds"))
+        if getattr(sys, "frozen", False):
+            base_dirs.append(os.path.join(os.path.dirname(sys.executable), "assets", "backgrounds"))
+        base_dirs.extend([
             os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "backgrounds"),
             os.path.join(os.getcwd(), "assets", "backgrounds"),
             os.path.join(os.getcwd(), "game1", "assets", "backgrounds"),
             "/app/assets/backgrounds",
-        ]
+        ])
         candidates = []
         for bd in base_dirs:
             candidates.append(os.path.join(bd, "scenic_100", filename))

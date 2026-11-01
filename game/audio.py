@@ -14,6 +14,8 @@ class SoundManager:
 
     def __init__(self):
         self.enabled = False
+        self.sample_rate = 22050
+        self.channels = 2
         self.sounds = {}
         self.bgm_playing = False
         self.bgm_channel = None
@@ -30,6 +32,10 @@ class SoundManager:
             if not pygame.mixer.get_init():
                 pygame.mixer.pre_init(22050, -16, 2, 512)
                 pygame.mixer.init()
+            init_info = pygame.mixer.get_init()
+            if init_info:
+                self.sample_rate = init_info[0]
+                self.channels = init_info[2]
             pygame.mixer.set_num_channels(32)
             self.bgm_channel = pygame.mixer.Channel(0)
             self.enabled = True
@@ -39,20 +45,26 @@ class SoundManager:
             # 在無音效卡、無 PulseAudio 或 Headless Docker 環境中自動靜音安全回退
             self.enabled = False
 
-    def _make_sound(self, samples, sample_rate=22050):
+    def _make_sound(self, samples, sample_rate=None):
         if not self.enabled:
             return None
         try:
-            # 確保為 16-bit 立體聲整數陣列
+            # 確保為 16-bit 整數陣列，並相容單聲道/立體聲與各版本 NumPy
             samples = np.clip(samples, -1.0, 1.0)
             int_samples = (samples * 32767).astype(np.int16)
-            stereo = np.column_stack((int_samples, int_samples))
-            return pygame.sndarray.make_sound(stereo)
+            if self.channels == 2:
+                arr = np.ascontiguousarray(np.column_stack((int_samples, int_samples)))
+            else:
+                arr = np.ascontiguousarray(int_samples)
+            try:
+                return pygame.sndarray.make_sound(arr)
+            except Exception:
+                return pygame.mixer.Sound(buffer=arr.tobytes())
         except Exception:
             return None
 
     def _generate_sounds(self):
-        sr = 22050
+        sr = self.sample_rate
 
         # 1. 我軍常規射擊音效 (短促高穿透機砲)
         t = np.linspace(0, 0.08, int(sr * 0.08), False)
@@ -164,7 +176,7 @@ class SoundManager:
         5. Track 5: Harmonic Chord Arpeggios (和聲琶音襯底軌)
         6. Track 6: Epic Brass Lead Melody (熱血英勇雙振盪器進行曲主旋律)
         """
-        sr = 22050
+        sr = self.sample_rate
         bpm = 140
         beat_dur = 60.0 / bpm
         step_dur = beat_dur / 2.0  # 八分音符步長

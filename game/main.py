@@ -58,22 +58,34 @@ class Game:
         self.screen_height = SCREEN_HEIGHT
         set_screen_width(self.screen_width)
 
-        # 初始化 Pygame
+        # 初始化 Pygame (相容 Windows 11 高 DPI 與 Linux/Docker)
         if self.headless:
             os.environ["SDL_VIDEODRIVER"] = "dummy"
             os.environ["SDL_AUDIODRIVER"] = "dummy"
-        elif self.cpu_mode:
-            # 強制 CPU 軟體渲染相容模式 (Mesa llvmpipe)
-            os.environ["LIBGL_ALWAYS_SOFTWARE"] = "1"
+        else:
+            os.environ.setdefault("SDL_VIDEO_CENTERED", "1")
+            if os.name == "nt":
+                try:
+                    import ctypes
+                    try:
+                        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+                    except Exception:
+                        ctypes.windll.user32.SetProcessDPIAware()
+                except Exception:
+                    pass
+            if self.cpu_mode:
+                # 強制 CPU 軟體渲染相容模式 (Mesa llvmpipe / Windows Software Renderer)
+                os.environ["LIBGL_ALWAYS_SOFTWARE"] = "1"
+                os.environ["SDL_RENDER_DRIVER"] = "software"
 
+        try:
+            pygame.mixer.pre_init(22050, -16, 2, 512)
+        except Exception:
+            pass
         pygame.init()
         pygame.display.set_caption(TITLE)
 
-        flags = 0
-        if self.fullscreen and not self.headless:
-            flags |= pygame.FULLSCREEN
-
-        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), flags)
+        self.screen = self._init_display_surface()
         self.clock = pygame.time.Clock()
         self.running = True
 
@@ -125,15 +137,26 @@ class Game:
             self.state = STATE_PLAYING
             self.sound_mgr.start_bgm()
 
+    def _init_display_surface(self):
+        """建立顯示視窗，在 Windows 11 桌面環境支援自動等比例縮放以適應 1080p/高解析度螢幕"""
+        flags = 0
+        if not self.headless:
+            if self.fullscreen:
+                flags |= pygame.FULLSCREEN
+            if os.name == "nt":
+                flags |= pygame.SCALED | pygame.RESIZABLE
+        try:
+            return pygame.display.set_mode((self.screen_width, self.screen_height), flags)
+        except Exception:
+            fallback_flags = pygame.FULLSCREEN if (self.fullscreen and not self.headless) else 0
+            return pygame.display.set_mode((self.screen_width, self.screen_height), fallback_flags)
+
     def set_mode(self, num_players):
         """切換 1 人模式 (960*10240) 與 2 人模式 (1024*10240)"""
         self.num_players = num_players
         self.screen_width = SCREEN_WIDTH_2P if num_players == 2 else SCREEN_WIDTH_1P
         set_screen_width(self.screen_width)
-        flags = 0
-        if self.fullscreen and not self.headless:
-            flags |= pygame.FULLSCREEN
-        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), flags)
+        self.screen = self._init_display_surface()
         self.bg_mgr.set_screen_width(self.screen_width)
 
     def init_players(self):
@@ -774,6 +797,11 @@ class Game:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
                     return
+
+                # F11 快速切換全螢幕 / 視窗模式 (方便 Windows 11 玩家)
+                if event.key == pygame.K_F11 and not self.headless:
+                    self.fullscreen = not self.fullscreen
+                    self.screen = self._init_display_surface()
 
                 # 【核心規則】：當其中一人的五個生命都損失後，透過 Y 鍵可以補滿。
                 if event.key == pygame.K_y:

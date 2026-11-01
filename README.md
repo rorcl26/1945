@@ -128,8 +128,12 @@
 
 ---
 
-## 系統相容性支援 (Ubuntu 26.04 / 24.04)
+## 系統相容性支援 (Windows 11 64-bit / Ubuntu 26.04 / 24.04)
 
+- **Windows 11 (x64) 免安裝直接執行版**：
+  - 提供完整獨立執行目錄 [`Windows11_Release/1945-II-WarSpace-Win11-x64/`](file:///home/rorc3090/%E6%96%87%E4%BB%B6/GA/1945/Windows11_Release/1945-II-WarSpace-Win11-x64/) 與封裝壓縮檔 [`II-WarSpace-1945-Win11-x64.zip`](file:///home/rorc3090/%E6%96%87%E4%BB%B6/GA/1945/II-WarSpace-1945-Win11-x64.zip)。
+  - 內建原生 64-bit Windows GUI 啟動器 **`1945-II-WarSpace.exe`**（具備 Windows 11 `PerMonitorV2` 高 DPI 感知清單、專屬戰機圖示與 UTF-8 支援）。
+  - 內嵌完整 Windows 64-bit 執行環境（Python 3.12 Embeddable + Pygame 2.6 SDL2 + NumPy + 繁體中文字型 + 100 張山海立體實景長卷），在全新 Windows 11 電腦上**無須安裝 Python 或 Docker，解壓縮後雙擊 `1945-II-WarSpace.exe` 即可直接遊玩**，並支援 `F11` 隨時切換全螢幕。
 - **Ubuntu 26.04 (Resolute) 與 Ubuntu 24.04 (Noble)** 原生支援。
 - **具備 NVIDIA GPU 環境**：利用 NVIDIA Container Toolkit 實現 OpenGL / SDL2 硬體加速渲染，最高畫面流暢度 60 FPS。
 - **無 GPU 環境**：自動平滑切換至 Mesa CPU 軟體渲染（llvmpipe），無任何缺少驅動報錯。
